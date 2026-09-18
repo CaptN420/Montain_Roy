@@ -1,0 +1,107 @@
+"""
+Mountain_Roy - Game Map (Carte de jeu)
+Étape 2: Génération et gestion de la carte
+"""
+
+import random
+import pygame
+from map.tile import Tile, TileType
+from settings import MAP_WIDTH, MAP_HEIGHT, TILE_SIZE
+
+
+class GameMap:
+    """Gère la carte du jeu."""
+    
+    def __init__(self):
+        self.width = MAP_WIDTH
+        self.height = MAP_HEIGHT
+        self.tiles = [[None for _ in range(self.width)] for _ in range(self.height)]
+        self._generate_map()
+    
+    def _generate_map(self):
+        """Génère une carte aléatoire."""
+        # Remplir avec de l'herbe
+        for y in range(self.height):
+            for x in range(self.width):
+                self.tiles[y][x] = Tile(x, y, TileType.GRASS)
+        
+        # Ajouter des forêts (10% de la carte)
+        for _ in range(int(self.width * self.height * 0.1)):
+            x = random.randint(0, self.width - 1)
+            y = random.randint(0, self.height - 1)
+            self.tiles[y][x] = Tile(x, y, TileType.FOREST)
+        
+        # Ajouter de l'eau (5% de la carte)
+        for _ in range(int(self.width * self.height * 0.05)):
+            x = random.randint(0, self.width - 1)
+            y = random.randint(0, self.height - 1)
+            self.tiles[y][x] = Tile(x, y, TileType.WATER)
+        
+        # Ajouter des montagnes (5% de la carte)
+        for _ in range(int(self.width * self.height * 0.05)):
+            x = random.randint(0, self.width - 1)
+            y = random.randint(0, self.height - 1)
+            self.tiles[y][x] = Tile(x, y, TileType.MOUNTAIN)
+        
+        # Ajouter des chemins (lignes horizontales et verticales)
+        for y in range(self.height):
+            if random.random() < 0.3:
+                for x in range(self.width):
+                    self.tiles[y][x] = Tile(x, y, TileType.PATH)
+        
+        for x in range(self.width):
+            if random.random() < 0.3:
+                for y in range(self.height):
+                    self.tiles[y][x] = Tile(x, y, TileType.PATH)
+        
+        # Ajouter des minerais d'or (5% de la carte)
+        for _ in range(int(self.width * self.height * 0.02)):
+            x = random.randint(0, self.width - 1)
+            y = random.randint(0, self.height - 1)
+            self.tiles[y][x] = Tile(x, y, TileType.GOLD_DEPOSIT)
+        
+        # Ajouter des arbres (5% de la carte)
+        for _ in range(int(self.width * self.height * 0.03)):
+            x = random.randint(0, self.width - 1)
+            y = random.randint(0, self.height - 1)
+            self.tiles[y][x] = Tile(x, y, TileType.WOOD_TREE)
+    
+    def get_tile(self, x: int, y: int) -> Tile:
+        """Récupère une tuile aux coordonnées données."""
+        if 0 <= x < self.width and 0 <= y < self.height:
+            return self.tiles[y][x]
+        return None
+    
+    def is_passable(self, x: int, y: int) -> bool:
+        """Vérifie si une tuile est traversable."""
+        tile = self.get_tile(x, y)
+        if tile is None:
+            return False
+        return tile.passable
+    
+    def draw(self, screen: pygame.Surface, camera_x: int, camera_y: int):
+        """Dessine la carte visible."""
+        # Convertir en int pour éviter les erreurs avec range()
+        camera_x = int(camera_x)
+        camera_y = int(camera_y)
+        
+        # Calculer les tuiles visibles
+        start_x = max(0, camera_x // TILE_SIZE)
+        end_x = min(self.width, (camera_x + screen.get_width()) // TILE_SIZE + 1)
+        start_y = max(0, camera_y // TILE_SIZE)
+        end_y = min(self.height, (camera_y + screen.get_height()) // TILE_SIZE + 1)
+        
+        # Dessiner chaque tuile visible
+        for y in range(start_y, end_y):
+            for x in range(start_x, end_x):
+                tile = self.tiles[y][x]
+                color = tile.get_color()
+                
+                # Position écran
+                screen_x = x * TILE_SIZE - camera_x
+                screen_y = y * TILE_SIZE - camera_y
+                
+                pygame.draw.rect(screen, color, (screen_x, screen_y, TILE_SIZE, TILE_SIZE))
+                
+                # Bordure subtile
+                pygame.draw.rect(screen, (0, 0, 0, 20), (screen_x, screen_y, TILE_SIZE, TILE_SIZE), 1)

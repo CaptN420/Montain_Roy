@@ -1,0 +1,290 @@
+{
+  "version": "1.0",
+  "timestamp": "2026-09-17 17:15:28",
+  "resources": {
+    "gold": 250,
+    "wood": 350,
+    "food": 100,
+    "max_food": 100,
+    "unit_costs": {
+      "warrior": {
+        "gold": 50,
+        "wood": 0,
+        "food": 10
+      },
+      "archer": {
+        "gold": 40,
+        "wood": 20,
+        "food": 5
+      },
+      "knight": {
+        "gold": 100,
+        "wood": 50,
+        "food": 20
+      },
+      "mage": {
+        "gold": 80,
+        "wood": 40,
+        "food": 10
+      },
+      "healer": {
+        "gold": 60,
+        "wood": 30,
+        "food": 10
+      },
+      "siege_engine": {
+        "gold": 150,
+        "wood": 100,
+        "food": 30
+      },
+      "scout": {
+        "gold": 30,
+        "wood": 10,
+        "food": 5
+      }
+    },
+    "building_costs": {
+      "town_hall": {
+        "gold": 0,
+        "wood": 0,
+        "food": 0
+      },
+      "barracks": {
+        "gold": 150,
+        "wood": 100,
+        "food": 20
+      },
+      "farm": {
+        "gold": 50,
+        "wood": 50,
+        "food": 0
+      },
+      "lumber_mill": {
+        "gold": 100,
+        "wood": 0,
+        "food": 10
+      },
+      "mine": {
+        "gold": 200,
+        "wood": 50,
+        "food": 20
+      },
+      "tower": {
+        "gold": 100,
+        "wood": 100,
+        "food": 10
+      },
+      "temple": {
+        "gold": 300,
+        "wood": 200,
+        "food": 50
+      },
+      "workshop": {
+        "gold": 200,
+        "wood": 150,
+        "food": 30
+      },
+      "academy": {
+        "gold": 250,
+        "wood": 150,
+        "food": 40
+      },
+      "dock": {
+        "gold": 300,
+        "wood": 200,
+        "food": 50
+      },
+      "wall": {
+        "gold": 50,
+        "wood": 50,
+        "food": 0
+      }
+    },
+    "building_prerequisites": {
+      "academy": [
+        "town_hall"
+      ],
+      "dock": [
+        "town_hall"
+      ],
+      "workshop": [
+        "barracks"
+      ]
+    }
+  },
+  "units": [
+    {
+      "x": 718.9324145134991,
+      "y": 1938.9173966993021,
+      "faction": "player",
+      "hp": 50,
+      "max_hp": 100,
+      "damage": 15,
+      "armor": 2,
+      "speed": 40,
+      "range": 32
+    },
+    {
+      "x": 1031.6168425008213,
+      "y": 2145.3227685952434,
+      "faction": "player",
+      "hp": 50,
+      "max_hp": 100,
+      "damage": 15,
+      "armor": 2,
+      "speed": 40,
+      "range": 32
+    },
+    {
+      "x": 936.6253495838208,
+      "y": 2169.229564390615,
+      "faction": "player",
+      "hp": 50,
+      "max_hp": 100,
+      "damage": 15,
+      "armor": 2,
+      "speed": 40,
+      "range": 32
+    },
+    {
+      "x": 984.4888411036229,
+      "y": 2158.7373682652164,
+      "faction": "player",
+      "hp": 50,
+      "max_hp": 100,
+      "damage": 15,
+      "armor": 2,
+      "speed": 40,
+      "range": 32
+    },
+    {
+      "x": 3075.9578063179347,
+      "y": 2092.028129121377,
+      "faction": "enemy",
+      "hp": 50,
+      "max_hp": 100,
+      "damage": 15,
+      "armor": 2,
+      "speed": 40,
+      "range": 32
+    },
+    {
+      "x": 3035.187341895381,
+      "y": 2119.2084387364134,
+      "faction": "enemy",
+      "hp": 50,
+      "max_hp": 100,
+      "damage": 15,
+      "armor": 2,
+      "speed": 40,
+      "range": 32
+    },
+    {
+      "x": 2994.416877472827,
+      "y": 2146.3887483514495,
+      "faction": "enemy",
+      "hp": 50,
+      "max_hp": 100,
+      "damage": 15,
+      "armor": 2,
+      "speed": 40,
+      "range": 32
+    },
+    {
+      "x": 2492.18088227562,
+      "y": 2109.8209096818464,
+      "faction": "enemy",
+      "hp": 50,
+      "max_hp": 100,
+      "damage": 15,
+      "armor": 2,
+      "speed": 40,
+      "range": 32
+    }
+  ],
+  "buildings": [
+    {
+      "x": 1024,
+      "y": 2048,
+      "faction": "player",
+      "type": "town_hall",
+      "hp": 1000,
+      "max_hp": 1000
+    },
+    {
+      "x": 1104,
+      "y": 2048,
+      "faction": "player",
+      "type": "town_hall",
+      "hp": 500,
+      "max_hp": 1000
+    },
+    {
+      "x": 964,
+      "y": 2088,
+      "faction": "player",
+      "type": "town_hall",
+      "hp": 500,
+      "max_hp": 1000
+    },
+    {
+      "x": 1014,
+      "y": 2088,
+      "faction": "player",
+      "type": "town_hall",
+      "hp": 500,
+      "max_hp": 1000
+    },
+    {
+      "x": 1064,
+      "y": 2088,
+      "faction": "player",
+      "type": "town_hall",
+      "hp": 500,
+      "max_hp": 1000
+    },
+    {
+      "x": 3072,
+      "y": 2048,
+      "faction": "enemy",
+      "type": "town_hall",
+      "hp": 960,
+      "max_hp": 1000
+    },
+    {
+      "x": 2992,
+      "y": 2048,
+      "faction": "enemy",
+      "type": "town_hall",
+      "hp": 500,
+      "max_hp": 1000
+    },
+    {
+      "x": 3132,
+      "y": 2088,
+      "faction": "enemy",
+      "type": "town_hall",
+      "hp": 500,
+      "max_hp": 1000
+    },
+    {
+      "x": 3182,
+      "y": 2088,
+      "faction": "enemy",
+      "type": "town_hall",
+      "hp": 500,
+      "max_hp": 1000
+    },
+    {
+      "x": 3232,
+      "y": 2088,
+      "faction": "enemy",
+      "type": "town_hall",
+      "hp": 500,
+      "max_hp": 1000
+    }
+  ],
+  "hero": null,
+  "map_width": 128,
+  "map_height": 128
+}
