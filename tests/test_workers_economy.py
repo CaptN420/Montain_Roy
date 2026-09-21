@@ -39,6 +39,42 @@ def test_produce_worker_assigne_game_pas_economie():
         "unit.game doit être l'objet Game (resource_nodes requis)"
 
 
+def test_worker_produit_apres_demarrage_campagne():
+    """Régression : après _start_campaign, un worker produit doit apparaître en jeu."""
+    from core.game import Game
+    g = Game()
+    g.faction_id = "human"
+    g._start_campaign()
+    g.state = "playing"
+    # Le système de construction doit partager LA MÊME liste que game.units
+    # (un rebind de self.units cassait produce_worker : ressource débitée, worker invisible).
+    assert g.construction_system.units is g.units
+    assert g.construction_system.buildings is g.buildings
+
+    g.economy.gold = 1000
+    g.economy.wood = 1000
+    g.economy.food = 1000
+    before = len(g.units)
+    g._produce_worker("worker")
+    assert len(g.units) == before + 1, "le worker doit être créé (et visible dans game.units)"
+    assert g.units[-1].unit_type == "worker"
+
+
+def test_worker_produit_apres_demarrage_campagne_debite_bien():
+    """Le worker créé après démarrage coûte bien ses ressources (pas de doublon de débit)."""
+    from core.game import Game
+    g = Game()
+    g.faction_id = "human"
+    g._start_campaign()
+    g.state = "playing"
+    g.economy.gold = 1000
+
+    cost = g.construction_system.WORKER_COSTS["worker"]
+    gold_before = g.economy.gold
+    g._produce_worker("worker")
+    assert g.economy.gold == gold_before - cost["gold"]
+
+
 def test_worker_produit_recolte_et_depose_sans_crash():
     """Un worker produit via le pipeline doit récolter et déposer sans exception."""
     from core.game import Game

@@ -681,8 +681,11 @@ class Game:
         # Le camp ennemi de la mission 1 vient de la CONFIG de la mission
         # (et non du setup inline de __init__, qui ne crée aucun guerrier),
         # pour assurer une cohérence stricte avec les missions 2+.
-        self.units = [u for u in self.units if u.faction != "enemy"]
-        self.buildings = [b for b in self.buildings if b.faction != "enemy"]
+        # Mutation SUR PLACE (pas de rebind) : ConstructionSystem référence ces
+        # listes depuis __init__ (l.151). Un rebind casserait produce_worker
+        # (le worker serait ajouté à l'ancienne liste, jamais visible en jeu).
+        self.units[:] = [u for u in self.units if u.faction != "enemy"]
+        self.buildings[:] = [b for b in self.buildings if b.faction != "enemy"]
         self.ai.initialize_enemy_base()
         self.state = "mission_screen"
 
@@ -836,7 +839,7 @@ class Game:
                 self.collision_system.resource_nodes = self.resource_nodes
 
             # Restaurer les unités (avec réattachement des workers au Game)
-            self.units = []
+            self.units[:] = []  # mutation sur place : garder la référence ConstructionSystem
             if "units" in save_data:
                 for unit_data in save_data["units"]:
                     unit = create_unit(unit_data.get("type", "warrior"),
@@ -862,7 +865,7 @@ class Game:
                 self.units.append(self.hero)
 
             # Restaurer les bâtiments avec leur VRAI type (via la factory)
-            self.buildings = []
+            self.buildings[:] = []  # mutation sur place : garder la référence ConstructionSystem
             if "buildings" in save_data:
                 for building_data in save_data["buildings"]:
                     building = self.construction_system._create_building(
