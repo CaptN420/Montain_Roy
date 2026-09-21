@@ -54,7 +54,8 @@ def test_clic_droit_mine_avec_heros_selectionne_ne_plante_pas():
     g = Game()
     g._apply_faction("human")
     g.state = "playing"
-    g.selected_units = [g.hero]
+    from entities.hero import Hero
+    g.selected_units = [Hero(0, 0, "player")]  # héros sans unit_type (régression)
 
     mine = ResourceNode(10_000, 10_000, "gold", 1000)  # is_mine auto=True pour gold
     g.resource_nodes = [mine]

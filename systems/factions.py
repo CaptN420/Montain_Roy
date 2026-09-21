@@ -55,6 +55,7 @@ BASE_BUILDING_COSTS = {
     "orc_war_hut":     {"gold": 160, "wood": 130, "food": 40, "time": 8.0},
     "elf_ranger_lodge": {"gold": 130, "wood": 100, "food": 20, "time": 8.0},
     "dwarf_forge":     {"gold": 240, "wood": 160, "food": 30, "time": 11.0},
+    "hero_hall":       {"gold": 180, "wood": 120, "food": 40, "time": 10.0},
 }
 
 # Rôle / nom / icône de chaque bâtiment pour le menu de construction
@@ -69,6 +70,7 @@ BUILDING_INFO = {
     "orc_war_hut":     ("Tanière de Guerre", "troupes", "Unités orques"),
     "elf_ranger_lodge":("Abri de Rangers", "troupes", "Unités elfes"),
     "dwarf_forge":     ("Forge Naine", "troupes", "Unités naines"),
+    "hero_hall":       ("Bâtiment à Héros", "troupes", "Recruter / ressusciter le héros"),
     "workshop":        ("Atelier", "troupes", "Unités spécialisées + artillerie"),
     "dock":            ("Quai", "navale", "Unités navales"),
     "temple":          ("Temple", "recherche", "Recherche / magie"),
@@ -229,7 +231,7 @@ FACTION_DATA = {
         },
         "buildings": ["farm", "barracks", "lumber_mill", "mine", "tower",
                       "temple", "workshop", "academy", "dock", "wall",
-                      "collection", "human_barracks"],
+                      "human_barracks", "collection", "hero_hall"],
         "building_costs": {
             "human_barracks": {"gold": 220, "wood": 160, "food": 40, "time": 9.0},
         },
@@ -284,7 +286,7 @@ FACTION_DATA = {
             "scout":     {"gold": 25, "wood": 10, "food": 5,  "time": 3.0},
         },
         "buildings": ["farm", "orc_war_hut", "lumber_mill", "mine", "tower",
-                      "workshop", "academy", "wall", "collection"],
+                      "workshop", "academy", "wall", "collection", "hero_hall"],
         "building_costs": {
             "orc_war_hut": {"gold": 150, "wood": 120, "food": 40, "time": 7.0},
         },
@@ -343,7 +345,7 @@ FACTION_DATA = {
         },
         "buildings": ["farm", "barracks", "elf_ranger_lodge", "lumber_mill",
                       "mine", "tower", "temple", "academy", "dock", "wall",
-                      "collection"],
+                      "collection", "hero_hall"],
         "building_costs": {
             "elf_ranger_lodge": {"gold": 120, "wood": 100, "food": 20, "time": 7.0},
         },
@@ -404,7 +406,7 @@ FACTION_DATA = {
             "scout":   {"gold": 30, "wood": 10, "food": 0,  "time": 4.0},
         },
         "buildings": ["farm", "barracks", "dwarf_forge", "lumber_mill", "mine",
-                      "tower", "workshop", "academy", "wall", "collection"],
+                      "tower", "workshop", "academy", "wall", "collection", "hero_hall"],
         "building_costs": {
             "dwarf_forge": {"gold": 240, "wood": 160, "food": 30, "time": 11.0},
             "tower": {"gold": 120, "wood": 90, "food": 0, "time": 6.0},

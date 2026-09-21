@@ -244,6 +244,17 @@ class Wall(Building):
         self.height = 32
 
 
+class HeroHall(Building):
+    """Bâtiment à héros : permet de recruter/ressusciter le héros (coût)."""
+
+    def __init__(self, x: int, y: int, faction: str = "player"):
+        super().__init__(x, y, faction, "hero_hall")
+        self.max_hp = 400
+        self.hp = self.max_hp
+        self.width = 48
+        self.height = 48
+
+
 class DropOffPoint:
     """Point de dépôt - où les workers rapportent les ressources."""
 

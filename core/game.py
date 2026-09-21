@@ -143,6 +143,9 @@ class Game:
         # Accélération du temps (fast-forward) : 1/2/4/8/16
         self.TIME_SCALES = (1, 2, 4, 8, 16)
         self.time_scale = 1  # index 0 de TIME_SCALES
+
+        # Coût pour recruter / ressusciter le héros depuis un bâtiment à héros.
+        self.HERO_RECRUIT_COST = {"gold": 250, "wood": 100, "food": 0}
         
         # Initialize game entities
         self._initialize_entities()
@@ -306,11 +309,9 @@ class Game:
         builder.game = self  # Set game reference for worker functionality
         self.units.append(builder)
 
-        # Hero spawns near the village
-        from entities.hero import Hero
-        hero = Hero(player_base_x - 40, player_base_y + 80, "player")
-        self.hero = hero
-        self.units.append(hero)
+        # Bâtiment à héros : le héros n'est plus gratuit, il se recrute
+        # via un HeroHall (voir _recruit_hero). self.hero reste None au départ.
+        # (anciennement : Hero spawn gratuit près du village)
 
         # Collection Building (Cabane de récolte) - near the village
         collection_player = CollectionBuilding(
@@ -507,6 +508,12 @@ class Game:
                     # Accélération du temps [G] : 1/2/4/8/16
                     elif event.key == pygame.K_g:
                         self._cycle_time_scale()
+                    
+                    # Recruter le héros [H] depuis un bâtiment à héros sélectionné
+                    elif event.key == pygame.K_h:
+                        if self.build_menu_open:
+                            self.build_menu_open = False
+                        self._recruit_hero()
                     
                     # Recherche [T]: doit passer par un bâtiment de recherche (académie ou équivalent)
                     elif event.key == pygame.K_t:
@@ -945,6 +952,44 @@ class Game:
                 new_unit = self.units[-1]
                 self.faction.apply_unit_modifiers(new_unit)
                 self.faction.apply_worker_bonus(new_unit)
+
+    def _recruit_hero(self, hall=None):
+        """Recrute / ressuscite le héros depuis un bâtiment à héros (coût).
+
+        `hall` : bâtiment à héros (par défaut le bâtiment sélectionné).
+        Le héros n'est plus gratuit : il faut construire un HeroHall puis
+        le recruter ici contre des ressources.
+        """
+        if hall is None:
+            hall = self._selected_building
+        if not hall or getattr(hall, "building_type", "") != "hero_hall":
+            self._show_ui_message("Sélectionnez d'abord un bâtiment à héros (clic droit).",
+                                  (255, 100, 100))
+            return
+        if self.hero is not None and self.hero in self.units and self.hero.is_alive():
+            self._show_ui_message("Le héros est déjà en vie.", (255, 200, 100))
+            return
+        if not self.economy.can_afford(self.HERO_RECRUIT_COST):
+            self._show_ui_message("Ressources insuffisantes pour recruter le héros.",
+                                  (255, 100, 100))
+            return
+
+        self.economy.pay_cost(self.HERO_RECRUIT_COST)
+        if self.hero is None:
+            from entities.hero import Hero
+            self.hero = Hero(hall.x + 40, hall.y, "player")
+            if self.faction:
+                self.faction.apply_unit_modifiers(self.hero)
+        else:
+            # Résurrection après mort (le héros mort a été retiré de self.units).
+            self.hero.hp = self.hero.max_hp
+            self.hero.x = hall.x + 40
+            self.hero.y = hall.y
+            self.hero.target = None
+            self.hero.is_moving = False
+        if self.hero not in self.units:
+            self.units.append(self.hero)
+        self._show_ui_message("Héros recruté !", (100, 255, 100))
 
     def _produce_unit(self, unit_type: str):
         """Produit une unité."""

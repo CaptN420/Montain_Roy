@@ -5,7 +5,7 @@ Version améliorée: Workers assignés, progression visuelle
 
 import pygame
 import math
-from entities.building import TownHall, Barracks, Farm, LumberMill, Mine, Tower, Temple, Workshop, Academy, Dock, Wall, CollectionBuilding, HumanBarracks, OrcWarHut, ElfRangerLodge, DwarfForge
+from entities.building import TownHall, Barracks, Farm, LumberMill, Mine, Tower, Temple, Workshop, Academy, Dock, Wall, CollectionBuilding, HumanBarracks, OrcWarHut, ElfRangerLodge, DwarfForge, HeroHall
 
 
 class BuildingProgress:
@@ -117,6 +117,7 @@ class ConstructionSystem:
         "temple": 48, "workshop": 48, "academy": 48, "dock": 48,
         "human_barracks": 48, "orc_war_hut": 48, "elf_ranger_lodge": 48,
         "dwarf_forge": 48, "wall": 32, "collection": 48, "town_hall": 64,
+        "hero_hall": 48,
     }
 
     def validate_build_position(self, building_type: str, x: int, y: int) -> tuple:
@@ -296,6 +297,7 @@ class ConstructionSystem:
             "orc_war_hut": OrcWarHut,
             "elf_ranger_lodge": ElfRangerLodge,
             "dwarf_forge": DwarfForge,
+            "hero_hall": HeroHall,
         }
 
         if building_type in buildings:
