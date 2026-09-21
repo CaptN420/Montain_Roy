@@ -6,7 +6,21 @@ Mountain_Roy - Enemy AI System (Intelligence Artificielle Ennemie)
 import random
 import pygame
 from entities.unit_types import create_unit
-from entities.building import TownHall, Barracks
+from entities.building import TownHall, Barracks, Farm, Tower, CollectionBuilding
+
+
+DEFAULT_ENEMY_CONFIG = {
+    "town_hall": True,
+    "barracks": True,
+    "farms": 3,
+    "collection": True,
+    "towers": 0,
+    "workers": 4,
+    "warriors": 3,
+    "gold": 200,
+    "wood": 150,
+    "food": 100,
+}
 
 
 class EnemyAI:
@@ -289,16 +303,47 @@ class EnemyAI:
             if closest_threat:
                 self._order_attack(unit, closest_threat)
     
-    def initialize_enemy_base(self):
-        """Initialise la base ennemie."""
-        # Créer un bâtiment principal ennemi
-        enemy_townhall = TownHall(70 * 32, 70 * 32, "enemy")
-        self.game.buildings.append(enemy_townhall)
-        
-        # Créer quelques unités ennemies
-        for i in range(3):
-            enemy_unit = create_unit("warrior", 
-                                    70 * 32 + i * 32, 
-                                    70 * 32 + 32, 
-                                    "enemy")
-            self.game.units.append(enemy_unit)
+    def _enemy_config(self):
+        """Config du camp ennemi : celle de la mission courante, sinon la valeur par défaut."""
+        mission = getattr(self.game, "current_mission", None)
+        cfg = getattr(mission, "enemy_config", None)
+        return cfg if cfg else DEFAULT_ENEMY_CONFIG
+
+    def initialize_enemy_base(self, config: dict | None = None):
+        """Initialise la base ennemie selon une config de mission.
+
+        `config` (ou enemy_config de la mission courante, sinon DEFAULT_ENEMY_CONFIG)
+        détermine la composition du camp : bâtiments (town hall, caserne, fermes,
+        tours, cabane de récolte) et unités (ouvriers, guerriers), ainsi que les
+        ressources de départ de l'économie ennemie. Permet une difficulté croissante
+        au fil des missions.
+        """
+        cfg = config if config is not None else self._enemy_config()
+        base_x = 70 * 32
+        base_y = 70 * 32
+
+        if cfg.get("town_hall", True):
+            self.game.buildings.append(TownHall(base_x, base_y, "enemy"))
+        if cfg.get("barracks", True):
+            self.game.buildings.append(Barracks(base_x - 80, base_y, "enemy"))
+        for i in range(cfg.get("farms", 0)):
+            self.game.buildings.append(Farm(base_x + 60 + i * 50, base_y + 40, "enemy"))
+        if cfg.get("collection", True):
+            self.game.buildings.append(CollectionBuilding(base_x + 120, base_y - 40, "enemy"))
+        for i in range(cfg.get("towers", 0)):
+            self.game.buildings.append(Tower(base_x - 120 - i * 40, base_y, "enemy"))
+
+        for i in range(cfg.get("workers", 0)):
+            worker = create_unit("worker", base_x - 20 - i * 24, base_y + 60 + i * 16, "enemy")
+            worker.game = self.game  # nécessaire pour la récolte (drop-off)
+            self.game.units.append(worker)
+        for i in range(cfg.get("warriors", 0)):
+            unit = create_unit("warrior", base_x + 40 + i * 40, base_y + 90 + (i % 2) * 24,
+                               "enemy", game=self.game)
+            self.game.units.append(unit)
+
+        ec = getattr(self.game, "enemy_economy", None)
+        if ec is not None:
+            ec.gold = cfg.get("gold", ec.gold)
+            ec.wood = cfg.get("wood", ec.wood)
+            ec.food = cfg.get("food", ec.food)

@@ -53,6 +53,9 @@ class Mission:
             "food": 0,
             "experience": 0,
         }
+        # Composition du camp ennemi pour cette mission (difficulté).
+        # Vide = utiliser DEFAULT_ENEMY_CONFIG.
+        self.enemy_config = {}
     
     def add_objective(self, objective: Objective):
         """Ajoute un objectif."""
@@ -93,6 +96,7 @@ class Mission:
                 for obj in self.objectives
             ],
             "rewards": self.rewards,
+            "enemy_config": self.enemy_config,
         }
     
     @classmethod
@@ -113,6 +117,7 @@ class Mission:
             mission.objectives.append(objective)
         
         mission.rewards = data.get("rewards", {})
+        mission.enemy_config = data.get("enemy_config", {})
         return mission
 
 
@@ -184,6 +189,8 @@ def create_default_campaign() -> Campaign:
     mission1.add_objective(Objective("kill_enemies", "Ennemis tués", "kill", 5))
     mission1.add_objective(Objective("build_barracks", "Construire une caserne", "build", 1))
     mission1.rewards = {"gold": 200, "wood": 100, "experience": 100}
+    mission1.enemy_config = {"workers": 4, "warriors": 3, "farms": 3, "barracks": True,
+                             "towers": 0, "gold": 200, "wood": 150, "food": 100}
     campaign.add_mission(mission1)
     
     # Mission 2: Expansion
@@ -192,6 +199,8 @@ def create_default_campaign() -> Campaign:
     mission2.add_objective(Objective("produce_units", "Unités produites", "produce", 10))
     mission2.add_objective(Objective("build_tower", "Construire une tour", "build", 1))
     mission2.rewards = {"gold": 300, "wood": 150, "food": 100, "experience": 150}
+    mission2.enemy_config = {"workers": 4, "warriors": 5, "farms": 3, "barracks": True,
+                             "towers": 1, "gold": 260, "wood": 180, "food": 120}
     campaign.add_mission(mission2)
     
     # Mission 3: Contre-attaque
@@ -200,6 +209,8 @@ def create_default_campaign() -> Campaign:
     mission3.add_objective(Objective("survive", "Survivre", "survive", 120))  # 120 secondes
     mission3.add_objective(Objective("kill_enemies", "Ennemis tués", "kill", 15))
     mission3.rewards = {"gold": 400, "wood": 200, "experience": 200}
+    mission3.enemy_config = {"workers": 5, "warriors": 7, "farms": 4, "barracks": True,
+                             "towers": 2, "gold": 320, "wood": 220, "food": 150}
     campaign.add_mission(mission3)
     
     # Mission 4: Conquête
@@ -207,6 +218,8 @@ def create_default_campaign() -> Campaign:
                        "Détruisez toutes les bases ennemies.")
     mission4.add_objective(Objective("destroy_bases", "Bases ennemies détruites", "destroy_building", 3))
     mission4.rewards = {"gold": 500, "wood": 300, "food": 200, "experience": 300}
+    mission4.enemy_config = {"workers": 6, "warriors": 9, "farms": 4, "barracks": True,
+                             "towers": 2, "gold": 400, "wood": 280, "food": 180}
     campaign.add_mission(mission4)
     
     return campaign
