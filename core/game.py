@@ -1350,12 +1350,23 @@ class Game:
         self._check_mission_objectives()
         
         # Vérifier victoire/défaite
+        self._check_victory_defeat()
+    
+    def _check_victory_defeat(self):
+        """Vérifie la victoire/défaite et fait progresser la campagne.
+
+        - Défaite : plus aucun bâtiment joueur.
+        - Victoire : tous les ennemis (unités + bâtiments) détruits.
+          Le camp ennemi est ensuite récréé pour la mission suivante, sinon
+          la nouvelle mission détecterait 0 ennemi et enchaînerait (cascade).
+        """
         player_buildings = [b for b in self.buildings if b.faction == "player"]
         enemy_units = [u for u in self.units if u.faction == "enemy"]
         enemy_buildings = [b for b in self.buildings if b.faction == "enemy"]
         
         if len(player_buildings) == 0:
             self.state = "defeat"
+            return
         elif len(enemy_units) == 0 and len(enemy_buildings) == 0:
             # Victoire seulement si tous les ennemis ET bâtiments sont détruits
             if self.current_mission:
@@ -1376,6 +1387,9 @@ class Game:
             else:
                 self.current_mission = self.campaign.start_next_mission()
                 if self.current_mission:
+                    # Recréer un camp ennemi pour la mission suivante afin
+                    # d'éviter une victoire en chaîne (0 ennemi restant).
+                    self.ai.initialize_enemy_base()
                     self.state = "mission_screen"
                 else:
                     self.state = "victory"
@@ -1545,7 +1559,10 @@ class Game:
         
         for objective in self.current_mission.objectives:
             if objective.type == "survive":
-                objective.update(int(self.mission_timer))
+                # Temps écoulé (activation directe : objectif rempli à la durée cible)
+                objective.current = int(self.mission_timer)
+                if objective.current >= objective.target and not objective.completed:
+                    objective.completed = True
             elif objective.type == "kill":
                 # Vérifier si l'objectif est complété
                 if objective.current >= objective.target and not objective.completed:
