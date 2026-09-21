@@ -56,6 +56,8 @@ class Mission:
         # Composition du camp ennemi pour cette mission (difficulté).
         # Vide = utiliser DEFAULT_ENEMY_CONFIG.
         self.enemy_config = {}
+        # Délai pour terminer la mission en secondes. 0 = illimité.
+        self.time_limit = 0
     
     def add_objective(self, objective: Objective):
         """Ajoute un objectif."""
@@ -97,6 +99,7 @@ class Mission:
             ],
             "rewards": self.rewards,
             "enemy_config": self.enemy_config,
+            "time_limit": self.time_limit,
         }
     
     @classmethod
@@ -118,6 +121,7 @@ class Mission:
         
         mission.rewards = data.get("rewards", {})
         mission.enemy_config = data.get("enemy_config", {})
+        mission.time_limit = data.get("time_limit", 0)
         return mission
 
 

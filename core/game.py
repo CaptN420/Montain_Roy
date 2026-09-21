@@ -1363,6 +1363,14 @@ class Game:
         player_buildings = [b for b in self.buildings if b.faction == "player"]
         enemy_units = [u for u in self.units if u.faction == "enemy"]
         enemy_buildings = [b for b in self.buildings if b.faction == "enemy"]
+
+        # Échec par temps : si la mission impose un délai et qu'il est dépassé.
+        limit = getattr(self.current_mission, "time_limit", 0) if self.current_mission else 0
+        if limit and self.mission_timer >= limit:
+            self.state = "defeat"
+            if self.current_mission:
+                self.current_mission.fail()
+            return
         
         if len(player_buildings) == 0:
             self.state = "defeat"
