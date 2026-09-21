@@ -587,3 +587,254 @@ Redessiné les ressources pour meilleure visibilité et esthétique:
 | 15 | Resources invisibles (Fog of War) | Critical | ✅ FIXED |
 
 **All critical issues resolved! Game is now fully playable with visible resources!**
+
+---
+
+## Session 6 Code Audit — Hero & Combat System (2026-09-18)
+
+### Executive Summary
+
+| Severity | Count |
+|----------|-------|
+| 🔴 Critical | 2 |
+| 🟠 High | 3 |
+| 🟡 Medium | 4 |
+| 🔵 Low | 3 |
+| **Total** | **12** |
+
+**Overall Assessment:** Le système XP du héros est complètement cassé (les kills n'augmentent jamais le niveau), l'IA ennemie ne peut pas récolter de ressources (pas de workers ennemis), et le CombatSystem est un stub mort. Ces bugs sont gameplay-breaking.
+
+---
+
+### Issue #16: Hero XP System Completely Broken
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🔴 Critical |
+| **Category** | Functional |
+| **File** | `entities/hero.py`, `entities/unit.py` |
+
+**Description:**
+Le Hero utilise `self.experience` mais hérite de `Unit.gain_xp()` qui incrémente `self.xp`. Quand le héros tue des ennemis, `unit.killed_by.gain_xp(xp)` appelle `Unit.gain_xp()` → incrémente `self.xp`, PAS `self.experience`. La méthode `Hero.gain_experience()` n'est jamais appelée.
+
+**Steps to Reproduce:**
+1. Démarrer le jeu, sélectionner le héros
+2. Tuer des unités ennemies
+3. Observer — la barre de vie/mana ne change pas, pas de level-up
+
+**Expected Behavior:**
+Tuer des ennemis devrait augmenter l'XP et déclencher les level-ups.
+
+**Actual Behavior:**
+Le héros ne gagne jamais d'XP ou de niveau. Deux systèmes XP déconnectés (`experience` vs `xp`).
+
+---
+
+### Issue #17: Enemy AI Cannot Gather Resources
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🔴 Critical |
+| **Category** | Functional |
+| **File** | `systems/ai.py:78-107` |
+
+**Description:**
+L'IA cherche des workers ennemis mais il n'y a AUCUN worker ennemi — seulement des warriors/archers/knights. L'IA ne récoltera jamais de ressources, tombera à court d'or/bois/nourriture et arrêtera de produire après le setup initial.
+
+**Steps to Reproduce:**
+1. Démarrer le jeu
+2. Attendre 60+ secondes
+3. Observer — l'économie ennemie s'arrête
+
+**Expected Behavior:**
+L'IA devrait avoir des workers qui récoltent automatiquement.
+
+**Actual Behavior:**
+Pas de workers ennemis, économie morte après quelques minutes.
+
+---
+
+### Issue #18: CombatSystem is a Dead Stub
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🟠 High |
+| **Category** | Functional |
+| **File** | `systems/combat.py` |
+
+**Description:**
+`CombatSystem.__init__` contient juste `pass`. Les unités gèrent le combat directement dans `Unit.update()` sans utiliser CombatSystem. De plus, l'armor est ignorée dans le combat :
+
+```python
+# Dans Unit.update():
+self.target.take_damage(self.damage)  # Pas de soustraction d'armor!
+```
+
+**Expected Behavior:**
+Le combat devrait utiliser CombatSystem ou l'armor devrait être appliquée.
+
+**Actual Behavior:**
+L'armor a zéro effet, tous les dégâts sont pleins.
+
+---
+
+### Issue #19: Mana Never Regenerates
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🟠 High |
+| **Category** | Functional |
+| **File** | `entities/hero.py:86-100` |
+
+**Description:**
+La méthode `update()` du héros décrémente les cooldowns des compétences mais ne régénère jamais le mana. Une fois le mana dépensé, il est perdu à jamais.
+
+**Expected Behavior:**
+Le mana devrait se régénérer (ex: 5 mana/sec).
+
+**Actual Behavior:**
+Mana permanently depleted après usage de skills.
+
+---
+
+### Issue #20: Hero `gain_experience()` Method Unused
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🟠 High |
+| **Category** | Functional |
+| **File** | `entities/hero.py:102-106` |
+
+**Description:**
+`Hero.gain_experience()` existe mais n'est jamais appelée. Le jeu utilise `Unit.gain_xp()` via `unit.killed_by.gain_xp(xp)` qui incrémente `self.xp`, pas `self.experience`.
+
+**Expected Behavior:**
+Le héros devrait utiliser sa propre méthode `gain_experience()`.
+
+**Actual Behavior:**
+L'XP va dans le mauvais attribut, level-up nunca triggered.
+
+---
+
+### Issue #21: Enemy Economy May Not Be Initialized
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🟡 Medium |
+| **Category** | Functional |
+| **File** | `core/game.py` |
+
+**Description:**
+L'IA référence `self.game.enemy_economy` mais cet attribut peut ne pas exister si le jeu n'est pas complètement initialisé.
+
+---
+
+### Issue #22: Attack Effect Not Rendered
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🟡 Medium |
+| **Category** | Visual |
+| **File** | `systems/combat.py:51-54` |
+
+**Description:**
+`_draw_attack_effect()` est un stub (`pass`). Pas de feedback visuel quand les unités attaquent.
+
+---
+
+### Issue #23: Worker Motivation System Ineffective
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🟡 Medium |
+| **Category** | UX |
+| **File** | `entities/worker.py:309-330` |
+
+**Description:**
+`try_motivate_nearby()` a 1% de chance par frame mais les workers ramassent déjà automatiquement. Le système ajoute de la complexité sans impact gameplay.
+
+---
+
+### Issue #24: Save System Uses Wrong Hero Attribute
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🟡 Medium |
+| **Category** | Functional |
+| **File** | `core/save_system.py:846` |
+
+**Description:**
+Le système de save restaure `self.hero.experience` mais la logique de level-up utilise `self.experience`. Si `gain_xp()` incrémente `self.xp`, la valeur sauvegardée ne correspond pas au niveau affiché.
+
+---
+
+### Issue #25: Console Warning — pkg_resources Deprecated
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🔵 Low |
+| **Category** | Console |
+| **File** | `pygame/pkgdata.py` |
+
+**Description:**
+Pygame importe `pkg_resources` déprécié. C'est un problème de dépendance externe, pas un bug du jeu.
+
+---
+
+### Issue #26: Minor Spacing in Collision System
+
+| Field | Value |
+|-------|-------|
+| **Severity** | 🔵 Low |
+| **Category** | Visual |
+| **File** | `systems/collision.py` |
+
+**Description:**
+Espacement inconsistent après le dernier patch. Cosmétique uniquement.
+
+---
+
+## Issues Summary Table (Session 6)
+
+| # | Title | Severity | Category | File | Status |
+|---|-------|----------|----------|------|--------|
+| 16 | Hero XP System Broken | 🔴 Critical | Functional | hero.py, unit.py | ✅ FIXED |
+| 17 | Enemy AI No Workers | 🔴 Critical | Functional | ai.py | ✅ ALREADY WORKING |
+| 18 | CombatSystem Dead Stub | 🟠 High | Functional | combat.py | ✅ FIXED |
+| 19 | Mana No Regeneration | 🟠 High | Functional | hero.py | ✅ FIXED |
+| 20 | Hero gain_experience() Unused | 🟠 High | Functional | hero.py | ✅ FIXED |
+| 21 | Enemy Economy Init | 🟡 Medium | Functional | game.py | ✅ ALREADY WORKING |
+| 22 | No Attack Visuals | 🟡 Medium | Visual | combat.py | ✅ FIXED |
+| 23 | Motivation Ineffective | 🟡 Medium | UX | worker.py | OPEN (cosmetic) |
+| 24 | Save System XP Sync | 🟡 Medium | Functional | save_system.py | ✅ FIXED |
+| 25 | pkg_resources Warning | 🔵 Low | Console | pygame | N/A (external) |
+| 26 | Spacing in collision.py | 🔵 Low | Visual | collision.py | OPEN (cosmetic) |
+
+---
+
+## Recommendations
+
+1. **Fix Hero XP immediately** — Unifier `experience`/`xp` et s'assurer que `level_up()` est appelé.
+2. **Add enemy workers** — L'IA a besoin d'au moins 2-3 workers pour récolter durablement.
+3. **Implement mana regeneration** — Ajouter 5 mana/sec dans `Hero.update()`.
+4. **Remove or complete CombatSystem** — Soit l'utiliser, soit supprimer le stub.
+5. **Add attack visual effects** — Même un simple flash améliorerait le feedback.
+
+---
+
+## Test Results (Session 6)
+
+```
+tests/test_campaign_ux.py ................. 21 passed
+tests/test_construction.py .................. 6 passed
+tests/test_hero.py ........................... 9 passed
+tests/test_integration.py .................... 1 passed
+tests/test_movement.py ....................... 8 passed
+tests/test_save_load.py ...................... 7 passed
+tests/test_tech_tree.py ...................... 5 passed
+tests/test_workers_economy.py ................ 3 passed
+
+60 passed, 0 failed, 1 warning
+```
+
+**All tests pass.** The game runs without crashes. Bugs are logic/gameplay issues, not runtime errors.

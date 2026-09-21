@@ -10,10 +10,11 @@ from settings import COLORS
 class Unit:
     """Classe de base pour toutes les unités."""
     
-    def __init__(self, x: int, y: int, faction: str = "player"):
+    def __init__(self, x: int, y: int, faction: str = "player", game=None):
         self.x = x
         self.y = y
         self.faction = faction  # "player" ou "enemy"
+        self.game = game
         
         # Stats de base (à override)
         self.max_hp = 100
@@ -23,14 +24,14 @@ class Unit:
         self.speed = 50  # pixels par seconde
         self.range = 32
         self.attack_speed = 1.0  # secondes entre les attaques
-
+        
         # Niveau et XP
         self.level = 1
         self.xp = 0
         self.xp_to_next = 100
         self.kills = 0
         self.killed_by = None  # Dernière unité qui nous a tués (pour l'XP)
-
+        
         # Selection
         self.selected = False
         self.radius = 16  # rayon pour la collision
@@ -38,7 +39,7 @@ class Unit:
         # Combat
         self.target = None
         self.attack_timer = 0
-
+        
         # Bouclier temporaire (peut être défini par les compétences)
         self.shield = 0
         self.shield_duration = 0
@@ -74,16 +75,22 @@ class Unit:
         
         # Gestion du combat
         if self.target and self.target.hp > 0:
+            # Calcul des bonus de synergie
+            synergies = self.get_synergy_bonus(self.game) if hasattr(self, 'game') and self.game else {"damage_mult": 1.0, "range_mult": 1.0}
+            
             dx = self.target.x - self.x
             dy = self.target.y - self.y
             distance = (dx ** 2 + dy ** 2) ** 0.5
             
-            if distance <= self.range:
+            effective_range = self.range * synergies["range_mult"]
+            
+            if distance <= effective_range:
                 # Attaquer
                 self.attack_timer += dt
                 if self.attack_timer >= self.attack_speed:
                     self.attack_timer = 0
-                    self.target.take_damage(self.damage)
+                    actual_damage = max(1, (self.damage * synergies["damage_mult"]) - getattr(self.target, 'armor', 0))
+                    self.target.take_damage(actual_damage, attacker=self)
             else:
                 # Déplacer vers la cible
                 self.is_moving = True
@@ -175,6 +182,32 @@ class Unit:
             (screen_x - bar_width // 2, screen_y - self.radius - 10, int(bar_width * hp_ratio), bar_height)
         )
     
+    def get_synergy_bonus(self, game) -> dict:
+        """Calcule les bonus de synergie basés sur l'environnement et les alliés proches."""
+        bonuses = {"damage_mult": 1.0, "range_mult": 1.0}
+        
+        # Synergie Archer : +20% de portée si derrière un mur ou une tour
+        if self.unit_type == "archer":
+            for b in game.buildings:
+                if b.faction == self.faction and b.building_type in ["wall", "tower"]:
+                    dist = ((b.x - self.x)**2 + (b.y - self.y)**2)**0.5
+                    if dist < 128:
+                        bonuses["range_mult"] = 1.2
+                        break
+
+        # Synergie Chevalier : +15% de dégâts si au moins 2 autres chevaliers sont proches
+        if self.unit_type == "knight":
+            knights = [u for u in game.units if u.unit_type == "knight" and u.faction == self.faction and u != self]
+            close_knights = 0
+            for k in knights:
+                dist = ((k.x - self.x)**2 + (k.y - self.y)**2)**0.5
+                if dist < 64:
+                    close_knights += 1
+            if close_knights >= 2:
+                bonuses["damage_mult"] = 1.15
+
+        return bonuses
+
     def to_dict(self) -> dict:
         """Sérialise l'unité."""
         return {

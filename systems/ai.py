@@ -78,8 +78,7 @@ class EnemyAI:
     def _gather_resources(self, dt: float):
         """Fait récolter les unités ennemies."""
         # Trouver les unités ennemies sans target
-        workers = [u for u in self.game.units
-                   if u.faction == "enemy" and ((not hasattr(u, 'target')) or u.target is None)]
+        workers = [u for u in self.game.units if u.faction == "enemy" and (not hasattr(u, 'target') or u.target is None)]
 
         if workers:
             # Trouver une ressource proche

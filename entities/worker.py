@@ -53,6 +53,14 @@ class Worker(Unit):
         # Mode bucheron - peut passer à travers les forêts
         self.can_cut_trees = True  # Workers peuvent traverser les arbres
 
+        # Spécialisation
+        self.specialization = None  # None, "logger", "scout", "harvester"
+        self.specialization_bonuses = {
+            "logger": {"wood_speed_mult": 1.5, "speed_mult": 0.9},
+            "scout": {"speed_mult": 1.3, "vision_radius": 1.5},
+            "harvester": {"food_speed_mult": 1.5, "gold_speed_mult": 1.2}
+        }
+
         # Coût de production
         self.cost = {
             "gold": 40,
@@ -72,6 +80,38 @@ class Worker(Unit):
         # Système de motivation de groupe
         self.can_motivate_others = False
         self.motivation_radius = 100  # Rayon de motivation
+
+        # Récolte avec délai
+        self.harvest_timer = 0.0
+        self.harvest_progress = 0.0
+        self.base_harvest_speeds = {
+            "gold": 0.5,  # Slower for mines
+            "wood": 0.8,  # Medium for forests
+            "food": 1.2   # Faster for farms
+        }
+        self.harvest_speeds = self.base_harvest_speeds.copy()
+        self._apply_specialization_stats()
+
+        # Coût de production
+        self.cost = {
+            "gold": 40,
+            "wood": 20,
+            "food": 5,
+        }
+        self.production_time = 2.5
+
+        # Système de personnalité et humeur
+        self.personality = self._generate_personality()
+        self.mood = "neutral"  # neutral, happy, tired, motivated, demotivated
+        self.mood_timer = 0.0
+        self.motivation_level = 1.0  # 0.0 à 1.0
+        self.chat_bubble = None  # Bubble de dialogue
+        self.chat_timer = 0.0
+
+        # Système de motivation de groupe
+        self.can_motivate_others = False
+        self.motivation_radius = 100  # Rayon de motivation
+
 
     def _generate_personality(self) -> dict:
         """Génère une personnalité aléatoire pour le worker."""
@@ -97,6 +137,28 @@ class Worker(Unit):
             "phrase": primary_trait[1],
         }
 
+    def _apply_specialization_stats(self):
+        """Applique les bonus de spécialisation aux stats de l'ouvrier."""
+        if not self.specialization or self.specialization not in self.specialization_bonuses:
+            return
+
+        bonuses = self.specialization_bonuses[self.specialization]
+
+        # Bonus de vitesse
+        if "speed_mult" in bonuses:
+            self.speed = int(self.speed * bonuses["speed_mult"])
+
+        # Bonus de récolte
+        if "wood_speed_mult" in bonuses:
+            self.harvest_speeds["wood"] *= bonuses["wood_speed_mult"]
+        if "food_speed_mult" in bonuses:
+            self.harvest_speeds["food"] *= bonuses["food_speed_mult"]
+        if "gold_speed_mult" in bonuses:
+            self.harvest_speeds["gold"] *= bonuses["gold_speed_mult"]
+            
+        # Bonus de vision (si applicable)
+        if "vision_radius" in bonuses:
+            self.range += (bonuses["vision_radius"] * 32) # Conversion simple en pixels
     def update(self, dt: float):
         """Met à jour l'ouvrier."""
         # Mettre à jour la fatigue et le hyper mode
@@ -163,19 +225,32 @@ class Worker(Unit):
                 distance = (dx ** 2 + dy ** 2) ** 0.5
 
                 if distance < 30:
-                    # Récolter la ressource - quantité basée sur max_carry (affectée par le bonus de recherche)
-                    amount = node.harvest(self.max_carry)
-                    if amount > 0:
-                        self.carrying = True
-                        self.carry_amount = amount
-                        # Ajouter le type si pas déjà dans la liste
-                        resource_type = node.resource_type
-                        if resource_type not in self.carrying_types:
-                            if len(self.carrying_types) < self.max_carry_types or self.hyper_mode:
-                                self.carrying_types.append(resource_type)
-                        # Déterminer le point de dépôt si pas déjà défini
-                        if not self.drop_off_point and hasattr(self, 'game'):
-                            self._find_drop_off_point()
+                    # --- NOUVELLE LOGIQUE DE RÉCOLTE AVEC DÉLAI ---
+                    rtype = node.resource_type
+                    speed = self.harvest_speeds.get(rtype, 1.0)
+                    
+                    # On incrémente la progression de récolte
+                    self.harvest_progress += dt * speed
+                    
+                    # Si la progression est suffisante (ex: 1.0 = 100% récolté)
+                    if self.harvest_progress >= 1.0:
+                        amount = node.harvest(self.max_carry)
+                        if amount > 0:
+                            self.carrying = True
+                            self.carry_amount = amount
+                            # Ajouter le type si pas déjà dans la liste
+                            if rtype not in self.carrying_types:
+                                if len(self.carrying_types) < self.max_carry_types or self.hyper_mode:
+                                    self.carrying_types.append(rtype)
+                            # Déterminer le point de dépôt si pas déjà défini
+                            if not self.drop_off_point and hasattr(self, 'game'):
+                                self._find_drop_off_point()
+                        
+                        # Reset le timer de récolte pour la prochaine fois
+                        self.harvest_progress = 0.0
+                    else:
+                        # Optionnel: on pourrait afficher une barre de progression ici
+                        pass
                 else:
                     # Se déplacer vers la ressource
                     self.is_moving = True
@@ -214,7 +289,8 @@ class Worker(Unit):
                 self.attack_timer += dt
                 if self.attack_timer >= self.attack_speed:
                     self.attack_timer = 0
-                    self.target.take_damage(self.damage)
+                    actual_damage = max(1, self.damage - getattr(self.target, 'armor', 0))
+                    self.target.take_damage(actual_damage, attacker=self)
             else:
                 # Déplacer vers la cible
                 self.is_moving = True
@@ -330,7 +406,11 @@ class Worker(Unit):
         return motivated_count > 0
 
     def _find_and_assign_to_resource(self):
-        """Trouve et assigne un worker à une ressource proche."""
+        """Trouve et assigne un worker à une ressource proche.
+
+        Privilégie la diversification : si le worker porte déjà des types,
+        cherche une ressource d'un type différent avant de prendre la plus proche.
+        """
         # Ne pas chercher de ressources si le worker est sélectionné
         if getattr(self, 'selected', False):
             return
@@ -347,64 +427,91 @@ class Worker(Unit):
         closest_resource = None
         closest_distance = 600  # Rayon de recherche
 
+        # Déterminer les types déjà portés pour privilégier la diversification
+        carried_types = set(self.carrying_types) if self.carrying_types else set()
+
+        # Phase 1 : chercher une ressource d'un type différent si on en porte déjà
+        preferred_resource = None
+        preferred_distance = float('inf')
         for node in self.game.resource_nodes:
             if node.is_depleted():
                 continue
+            rtype = node.resource_type
+            if carried_types and rtype not in carried_types:
+                dx = node.x - self.x
+                dy = node.y - self.y
+                dist = (dx ** 2 + dy ** 2) ** 0.5
+                if dist < preferred_distance:
+                    preferred_distance = dist
+                    preferred_resource = node
 
+        # Phase 2 : trouver la ressource la plus proche (fallback)
+        for node in self.game.resource_nodes:
+            if node.is_depleted():
+                continue
             dx = node.x - self.x
             dy = node.y - self.y
             distance = (dx ** 2 + dy ** 2) ** 0.5
-
             if distance < closest_distance:
                 closest_distance = distance
                 closest_resource = node
 
+        # Choisir : privilégier la ressource de type différent si elle est raisonnablement proche
+        chosen = None
+        if preferred_resource and preferred_distance <= closest_distance * 1.5:
+            chosen = preferred_resource
+        else:
+            chosen = closest_resource
+
         # Assigner le worker à la ressource trouvée
-        if closest_resource:
-            self.target_resource = closest_resource
+        if chosen:
+            self.target_resource = chosen
             # Si c'est une mine d'or, assigner aussi à la mine
-            if hasattr(closest_resource, 'is_mine') and closest_resource.is_mine and hasattr(closest_resource, 'assign_worker'):
-                closest_resource.assign_worker(self)
+            if hasattr(chosen, 'is_mine') and chosen.is_mine and hasattr(chosen, 'assign_worker'):
+                chosen.assign_worker(self)
 
     def _find_drop_off_point(self):
-        """Trouve le point de dépôt le plus proche (bâtiment de la faction)."""
-        # Chercher le bâtiment le plus proche de la même faction
+        """Trouve le point de dépôt le plus proche (CollectionBuilding ou TownHall)."""
         if not hasattr(self, 'game') or not self.game:
             return
 
         closest_building = None
-        closest_distance = float('inf')  # Pas de limite de distance
+        closest_distance = float('inf')
 
         for building in self.game.buildings:
-            if building.faction != self.faction:
-                continue
+            # Seuls les bâtiments de collection ou l'hôtel de ville sont des points de dépôt
+            if building.building_type in ["collection", "town_hall"] and building.faction == self.faction:
+                dx = building.x - self.x
+                dy = building.y - self.y
+                distance = (dx ** 2 + dy ** 2) ** 0.5
 
-            dx = building.x - self.x
-            dy = building.y - self.y
-            distance = (dx ** 2 + dy ** 2) ** 0.5
+                if distance < closest_distance:
+                    closest_distance = distance
+                    closest_building = building
 
-            if distance < closest_distance:
-                closest_distance = distance
-                closest_building = building
-
-        # Utiliser le bâtiment trouvé comme point de dépôt
         if closest_building:
             self.drop_off_point = closest_building
 
     def _deposit_resources(self):
-        """Dépose les ressources collectées."""
+        """Dépose les ressources collectées sur le point de dépôt."""
         if self.carry_amount > 0:
-            # Ajouter les ressources au système d'économie (selon la faction)
-            if hasattr(self, 'game') and self.game:
-                ec = self.game.enemy_economy if getattr(self, 'faction', 'player') == 'enemy' else self.game.economy
-                if self.target_resource and hasattr(self.target_resource, 'resource_type'):
-                    resource_type = self.target_resource.resource_type
-                    if resource_type == "gold":
-                        ec.add_resources(gold=self.carry_amount)
-                    elif resource_type == "wood":
-                        ec.add_resources(wood=self.carry_amount)
-                    elif resource_type == "food":
-                        ec.add_resources(food=self.carry_amount)
+            # Déposer sur le bâtiment de dépôt
+            if self.drop_off_point and hasattr(self.drop_off_point, 'receive_resources'):
+                # On passe l'économie appropriée au bâtiment
+                economy = self.game.enemy_economy if getattr(self, 'faction', 'player') == 'enemy' else self.game.economy
+                self.drop_off_point.receive_resources(self.carry_amount, self.target_resource.resource_type if self.target_resource else None, economy)
+            else:
+                # Fallback : si pas de point de dépôt valide, on dépose dans l'économie globale (ancienne méthode)
+                if hasattr(self, 'game') and self.game:
+                    ec = self.game.enemy_economy if getattr(self, 'faction', 'player') == 'enemy' else self.game.economy
+                    if self.target_resource and hasattr(self.target_resource, 'resource_type'):
+                        resource_type = self.target_resource.resource_type
+                        if resource_type == "gold":
+                            ec.add_resources(gold=self.carry_amount)
+                        elif resource_type == "wood":
+                            ec.add_resources(wood=self.carry_amount)
+                        elif resource_type == "food":
+                            ec.add_resources(food=self.carry_amount)
 
             # Son de dépôt
             if hasattr(self, 'game') and hasattr(self.game, 'audio_events'):
@@ -421,9 +528,289 @@ class Worker(Unit):
                     self.hyper_mode = True
                     self.hyper_timer = 0.0
 
-        # Si on a atteint le max de types, reset la liste après un dépôt
-        if len(self.carrying_types) >= self.max_carry_types and not self.hyper_mode:
-            self.carrying_types = []
+            # Si on a atteint le max de types, reset la liste après un dépôt
+            if len(self.carrying_types) >= self.max_carry_types and not self.hyper_mode:
+                self.carrying_types = []
+
+    def set_drop_off_point(self, point):
+        """Définit le point de dépôt."""
+        self.drop_off_point = point
+
+    def get_color(self) -> tuple:
+        """Retourne la couleur de l'unité."""
+        if self.faction == "player":
+            return (100, 149, 237)  # Bleu
+        return (178, 34, 34)  # Rouge
+
+    def to_dict(self) -> dict:
+        """Sérialise l'unité."""
+        data = super().to_dict()
+        data["unit_type"] = self.unit_type
+        data["carrying"] = self.carrying
+        data["carry_amount"] = self.carry_amount
+        data["can_cut_trees"] = self.can_cut_trees
+        data["mood"] = self.mood
+        data["motivation"] = self.motivation_level
+        return data
+
+    def draw_chat_bubble(self, screen, camera_x, camera_y):
+        """Dessine la bulle de dialogue au-dessus du worker."""
+        if not self.chat_bubble:
+            return
+
+        screen_x = int(self.x - camera_x)
+        screen_y = int(self.y - camera_y)
+
+        # Dessiner la bulle
+        font = pygame.font.Font(None, 14)
+        text = font.render(self.chat_bubble, True, (255, 255, 255))
+
+        # Position de la bulle (au-dessus du worker)
+        bubble_x = screen_x - text.get_width() // 2
+        bubble_y = screen_y - 40
+
+        # Fond de la bulle
+        pygame.draw.rect(screen, (0, 0, 0, 180),
+                        (bubble_x - 5, bubble_y - 5,
+                         text.get_width() + 10, text.get_height() + 10),
+                        border_radius=8)
+
+        # Texte
+        screen.blit(text, (bubble_x, bubble_y))
+
+    def _update_mood(self, dt: float):
+        """Met à jour l'humeur en fonction du temps et des actions."""
+        # Obtenir l'heure du jour (simulée)
+        hour = pygame.time.get_ticks() / 1000 % 24
+
+        # Les workers sont plus motivés le matin (6-12h)
+        if 6 <= hour <= 12:
+            motivation_boost = 0.2
+        elif 12 <= hour <= 18:
+            motivation_boost = 0.1
+        else:
+            motivation_boost = -0.1
+
+        # Ajuster la motivation selon l'humeur
+        self.motivation_level = max(0.0, min(1.0,
+            self.motivation_level + motivation_boost * dt * 0.1
+        ))
+
+        # Changer l'humeur selon la fatigue et la motivation
+        if self.fatigue_timer > self.fatigue_duration * 2:
+            self.mood = "tired"
+        elif self.motivation_level < 0.3:
+            self.mood = "demotivated"
+        elif self.motivation_level > 0.8 and self.hyper_mode:
+            self.mood = "motivated"
+        elif self.carrying and self.fatigue_timer < self.fatigue_duration:
+            self.mood = "happy"
+        else:
+            self.mood = "neutral"
+
+        # Générer aléatoirement des bulles de dialogue
+        if random.random() < 0.001 * dt:  # Très rare
+            self._generate_chat()
+
+    def _generate_chat(self):
+        """Génère une phrase de dialogue selon l'humeur."""
+        chats = {
+            "happy": [
+                "Ça va bien!",
+                "J'adore travailler!",
+                "Encore un peu!",
+                "On y est presque!",
+            ],
+            "tired": [
+                "J'en peux plus...",
+                "Il faut que je me repose.",
+                "Trop fatigant...",
+                "Zzz...",
+            ],
+            "motivated": [
+                "Je suis prêt à tout!",
+                "On va gagner!",
+                "En avant!",
+                "Je suis invincible!",
+                "Allez les gars, on y est presque!",
+                "Ne lâchez rien!",
+            ],
+            "demotivated": [
+                "Pourquoi je fais ça?",
+                "C'est pas juste...",
+                "J'ai envie de partir.",
+                "Personne ne m'aime.",
+            ],
+            "neutral": [
+                "Bon, continuons.",
+                "Il fait beau aujourd'hui.",
+                "J'ai faim.",
+                "C'est calme.",
+            ],
+        }
+
+        # Ajouter la phrase de personnalité aléatoirement
+        if random.random() < self.personality["traits"]["social"]:
+            personality_phrases = [
+                "Salut les gars!",
+                "Vous allez bien?",
+                "On devrait tous se connaître.",
+                "C'est sympa d'être ensemble.",
+                "Ensemble, on est plus forts!",
+            ]
+            chats["neutral"].extend(personality_phrases)
+
+        self.chat_bubble = random.choice(chats.get(self.mood, chats["neutral"]))
+
+    def try_motivate_nearby(self, nearby_workers):
+        """Tente de motiver les workers proches."""
+        if self.mood not in ["motivated", "happy"]:
+            return False
+
+        motivated_count = 0
+        for other in nearby_workers:
+            if other is self or other.mood == "motivated":
+                continue
+
+            # Calculer la distance
+            dx = other.x - self.x
+            dy = other.y - self.y
+            distance = (dx ** 2 + dy ** 2) ** 0.5
+
+            if distance < self.motivation_radius:
+                # Motiver l'autre worker
+                other.motivation_level = min(1.0, other.motivation_level + 0.2)
+                other.mood = "motivated"
+                motivated_count += 1
+
+        return motivated_count > 0
+
+    def _find_and_assign_to_resource(self):
+        """Trouve et assigne un worker à une ressource proche.
+
+        Privilégie la diversification : si le worker porte déjà des types,
+        cherche une ressource d'un type différent avant de prendre la plus proche.
+        """
+        # Ne pas chercher de ressources si le worker est sélectionné
+        if getattr(self, 'selected', False):
+            return
+
+        if not hasattr(self, 'game') or not self.game:
+            return
+
+        # Si on porte déjà des ressources, ne PAS chercher une nouvelle cible
+        # Le worker doit d'abord déposer ce qu'il porte
+        if self.carrying:
+            return
+
+        # Chercher une ressource proche (wood, food ou gold)
+        closest_resource = None
+        closest_distance = 600  # Rayon de recherche
+
+        # Déterminer les types déjà portés pour privilégier la diversification
+        carried_types = set(self.carrying_types) if self.carrying_types else set()
+
+        # Phase 1 : chercher une ressource d'un type différent si on en porte déjà
+        preferred_resource = None
+        preferred_distance = float('inf')
+        for node in self.game.resource_nodes:
+            if node.is_depleted():
+                continue
+            rtype = node.resource_type
+            if carried_types and rtype not in carried_types:
+                dx = node.x - self.x
+                dy = node.y - self.y
+                dist = (dx ** 2 + dy ** 2) ** 0.5
+                if dist < preferred_distance:
+                    preferred_distance = dist
+                    preferred_resource = node
+
+        # Phase 2 : trouver la ressource la plus proche (fallback)
+        for node in self.game.resource_nodes:
+            if node.is_depleted():
+                continue
+            dx = node.x - self.x
+            dy = node.y - self.y
+            distance = (dx ** 2 + dy ** 2) ** 0.5
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_resource = node
+
+        # Choisir : privilégier la ressource de type différent si elle est raisonnablement proche
+        chosen = None
+        if preferred_resource and preferred_distance <= closest_distance * 1.5:
+            chosen = preferred_resource
+        else:
+            chosen = closest_resource
+
+        # Assigner le worker à la ressource trouvée
+        if chosen:
+            self.target_resource = chosen
+            # Si c'est une mine d'or, assigner aussi à la mine
+            if hasattr(chosen, 'is_mine') and chosen.is_mine and hasattr(chosen, 'assign_worker'):
+                chosen.assign_worker(self)
+
+    def _find_drop_off_point(self):
+        """Trouve le point de dépôt le plus proche (CollectionBuilding ou TownHall)."""
+        if not hasattr(self, 'game') or not self.game:
+            return
+
+        closest_building = None
+        closest_distance = float('inf')
+
+        for building in self.game.buildings:
+            # Seuls les bâtiments de collection ou l'hôtel de ville sont des points de dépôt
+            if building.building_type in ["collection", "town_hall"] and building.faction == self.faction:
+                dx = building.x - self.x
+                dy = building.y - self.y
+                distance = (dx ** 2 + dy ** 2) ** 0.5
+
+                if distance < closest_distance:
+                    closest_distance = distance
+                    closest_building = building
+
+        if closest_building:
+            self.drop_off_point = closest_building
+
+    def _deposit_resources(self):
+        """Dépose les ressources collectées sur le point de dépôt."""
+        if self.carry_amount > 0:
+            # Déposer sur le bâtiment de dépôt
+            if self.drop_off_point and hasattr(self.drop_off_point, 'receive_resources'):
+                # On passe l'économie appropriée au bâtiment
+                economy = self.game.enemy_economy if getattr(self, 'faction', 'player') == 'enemy' else self.game.economy
+                self.drop_off_point.receive_resources(self.carry_amount, self.target_resource.resource_type if self.target_resource else None, economy)
+            else:
+                # Fallback : si pas de point de dépôt valide, on dépose dans l'économie globale (ancienne méthode)
+                if hasattr(self, 'game') and self.game:
+                    ec = self.game.enemy_economy if getattr(self, 'faction', 'player') == 'enemy' else self.game.economy
+                    if self.target_resource and hasattr(self.target_resource, 'resource_type'):
+                        resource_type = self.target_resource.resource_type
+                        if resource_type == "gold":
+                            ec.add_resources(gold=self.carry_amount)
+                        elif resource_type == "wood":
+                            ec.add_resources(wood=self.carry_amount)
+                        elif resource_type == "food":
+                            ec.add_resources(food=self.carry_amount)
+
+            # Son de dépôt
+            if hasattr(self, 'game') and hasattr(self.game, 'audio_events'):
+                self.game.audio_events.on_resource_collected()
+
+            # Reset - mais garder les types pour continuer à collecter
+            self.carrying = False
+            self.carry_amount = 0
+            self.fatigue_timer = 0.0  # Reset fatigue timer
+
+            # Activer le hyper mode aléatoirement (10% de chance)
+            if not self.hyper_mode and len(self.carrying_types) >= 2:
+                if random.random() < 0.1:
+                    self.hyper_mode = True
+                    self.hyper_timer = 0.0
+
+            # Si on a atteint le max de types, reset la liste après un dépôt
+            if len(self.carrying_types) >= self.max_carry_types and not self.hyper_mode:
+                self.carrying_types = []
 
     def set_drop_off_point(self, point):
         """Définit le point de dépôt."""

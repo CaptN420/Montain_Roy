@@ -309,7 +309,7 @@ class Boat(NavalUnit):
         self.production_time = 5.0
 
 
-def create_unit(unit_type: str, x: int, y: int, faction: str = "player") -> Unit:
+def create_unit(unit_type: str, x: int, y: int, faction: str = "player", game=None) -> Unit:
     """Crée une unité selon son type."""
     units = {
         "warrior": Warrior,
@@ -330,4 +330,9 @@ def create_unit(unit_type: str, x: int, y: int, faction: str = "player") -> Unit
     }
 
     unit_class = units.get(unit_type, Warrior)
-    return unit_class(x, y, faction)
+    unit = unit_class(x, y, faction)
+    # Les __init__ des sous-classes ne prennent pas encore le paramètre `game` :
+    # on l'assigne après construction (base Unit.__init__ accepte game=None).
+    if game is not None:
+        unit.game = game
+    return unit

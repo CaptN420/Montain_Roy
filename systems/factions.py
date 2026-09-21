@@ -198,6 +198,9 @@ class Faction:
                     setattr(worker, attr, current + value)
                 else:
                     setattr(worker, attr, value)
+            # Bonus spécifiques aux types de ressources (ex: max_carry_types pour nains)
+            elif attr == "max_carry_types":
+                worker.max_carry_types = getattr(worker, 'max_carry_types', 2) + value
 
 
 # ============================================================
@@ -390,7 +393,7 @@ FACTION_DATA = {
                        "Gameplay lent mais très difficile à déloger.",
         "color": (210, 105, 30),
         "starting_resources": {"gold": 260, "wood": 130, "food": 110},
-        "worker_bonus": {"armor": 3},
+        "worker_bonus": {"armor": 3, "max_carry_types": 1},
         "unit_roster": ["worker", "builder", "warrior", "archer", "knight",
                         "healer", "scout", "cannon"],
         "unit_costs": {

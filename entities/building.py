@@ -38,9 +38,20 @@ class Building:
             return (100, 149, 237)  # Bleu
         return (178, 34, 34)  # Rouge
     
-    def update(self, dt: float):
-        """Met à jour le bâtiment."""
-        pass
+    def receive_resources(self, amount: int, resource_type: str = None, economy=None):
+        """Reçoit des ressources d'un worker et les ajoute à l'économie de la faction."""
+        if amount <= 0:
+            return
+
+        if economy is None:
+            return
+
+        if resource_type == "gold":
+            economy.add_resources(gold=amount)
+        elif resource_type == "wood":
+            economy.add_resources(wood=amount)
+        elif resource_type == "food":
+            economy.add_resources(food=amount)
     
     def take_damage(self, damage: int, attacker=None):
         """Subit des dégâts.

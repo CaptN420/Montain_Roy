@@ -58,8 +58,14 @@ def test_worker_produit_recolte_et_depose_sans_crash():
     w.x, w.y = node.x, node.y  # placer sur la ressource
     # Force désélection (gather)
     w.selected = False
+
+    # La récolte est temporisée (harvest_progress >= 1.0) : on avance les frames
+    # jusqu'à ce que le worker porte la ressource.
+    frames = 0
     try:
-        w.update(0.016)  # récolte
+        while not w.carrying and frames < 300:
+            w.update(0.016)
+            frames += 1
     except Exception as e:
         pytest.fail(f"worker.update a crashé pendant la récolte: {e}")
     assert w.carrying, "le worker doit porter la ressource après la récolte"
@@ -68,9 +74,13 @@ def test_worker_produit_recolte_et_depose_sans_crash():
     w._find_drop_off_point()
     assert w.drop_off_point is not None
     w.x, w.y = w.drop_off_point.x, w.drop_off_point.y
+    w.is_moving = False
     gold_before = g.economy.gold
     try:
-        w.update(0.016)  # dépôt
+        for _ in range(5):
+            w.update(0.016)  # dépôt
+            if w.carry_amount == 0:
+                break
     except Exception as e:
         pytest.fail(f"worker.update a crashé pendant le dépôt: {e}")
     assert g.economy.gold > gold_before or not w.carrying, \
@@ -82,17 +92,23 @@ def test_recherche_mining_augmente_recolte_reelle():
     from entities.resource_node import ResourceNode
     node = ResourceNode(100, 100, "gold", 1000)
 
+    def _complete_harvest(w):
+        """Avance les frames jusqu'à ce que le worker ait terminé une récolte."""
+        for _ in range(300):
+            w.update(0.016)
+            if w.carrying:
+                return w.carry_amount
+        return w.carry_amount
+
     w1 = Worker(100, 100, "player")  # sans bonus
     w1.target_resource = node
-    w1.update(0.016)
-    amount_no_bonus = w1.carry_amount
+    amount_no_bonus = _complete_harvest(w1)
 
     # avec bonus mining (simule : meilleure capacité de portage)
     w2 = Worker(100, 100, "player")
     w2.target_resource = node
     w2.max_carry = 15 + 15  # mining double la portée (comme géré par _apply_research_effects)
-    w2.update(0.016)
-    amount_with_bonus = w2.carry_amount
+    amount_with_bonus = _complete_harvest(w2)
 
     assert amount_with_bonus > amount_no_bonus, \
         "le bonus de recherche doit augmenter la quantité réellement récoltée"

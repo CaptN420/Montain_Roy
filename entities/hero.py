@@ -92,6 +92,9 @@ class Hero(Unit):
             if skill["cooldown"] > 0:
                 skill["cooldown"] -= dt
 
+        # Régénération du mana (5 mana/sec)
+        self.mana = min(self.max_mana, self.mana + 5 * dt)
+
         # Expiration du bouclier temporaire
         if self.shield > 0 and self.shield_duration > 0:
             self.shield_duration -= dt
@@ -104,6 +107,10 @@ class Hero(Unit):
         self.experience += amount
         if self.experience >= self.experience_to_next:
             self.level_up()
+
+    def gain_xp(self, amount: int):
+        """Alias pour gain_experience — utilisé par le système de combat."""
+        self.gain_experience(amount)
     
     def level_up(self):
         """Monte de niveau."""
