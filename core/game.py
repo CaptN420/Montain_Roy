@@ -670,6 +670,12 @@ class Game:
         self._apply_faction(self.faction_id)
         self.campaign = create_default_campaign()
         self.current_mission = self.campaign.start_next_mission()
+        # Le camp ennemi de la mission 1 vient de la CONFIG de la mission
+        # (et non du setup inline de __init__, qui ne crée aucun guerrier),
+        # pour assurer une cohérence stricte avec les missions 2+.
+        self.units = [u for u in self.units if u.faction != "enemy"]
+        self.buildings = [b for b in self.buildings if b.faction != "enemy"]
+        self.ai.initialize_enemy_base()
         self.state = "mission_screen"
 
     def _apply_faction(self, faction_id: str):

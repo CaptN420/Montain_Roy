@@ -113,6 +113,23 @@ def test_campagne_parcourt_toutes_les_missions():
     assert c.is_campaign_complete()
 
 
+def test_mission1_camp_ennemi_vient_de_la_config():
+    """Nouvelle partie : le camp ennemi de mission 1 vient de enemy_config (3 guerriers)."""
+    from core.game import Game
+    g = Game()
+    g.faction_id = "human"
+    g._start_campaign()
+    assert g.current_mission.mission_id == "mission_1"
+
+    ewarriors = [u for u in g.units if u.faction == "enemy" and u.unit_type == "warrior"]
+    eworkers = [u for u in g.units if u.faction == "enemy" and u.unit_type == "worker"]
+    cfg = g.current_mission.enemy_config
+    assert len(ewarriors) == cfg["warriors"]
+    assert len(eworkers) == cfg["workers"]
+    # Coût : la config fait foi (avant : le setup inline de __init__ créait 0 guerrier).
+    assert len(ewarriors) >= 1
+
+
 def test_objectif_survive_rempli_a_la_duree_cible():
     from systems.campaign import Mission, Objective
     from core.game import Game
