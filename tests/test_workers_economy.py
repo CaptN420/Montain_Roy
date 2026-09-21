@@ -39,6 +39,31 @@ def test_produce_worker_assigne_game_pas_economie():
         "unit.game doit être l'objet Game (resource_nodes requis)"
 
 
+def test_hero_a_un_unit_type():
+    """Régression : le héros doit définir unit_type (sinon clic droit plante)."""
+    from entities.hero import Hero
+    h = Hero(0, 0, "player")
+    assert h.unit_type == "hero"
+
+
+def test_clic_droit_mine_avec_heros_selectionne_ne_plante_pas():
+    """Régression : que le héros n'a pas de unit_type, un clic droit sur une
+    mine d'or faisait AttributeError ('Hero' object has no attribute 'unit_type')."""
+    from core.game import Game
+    from entities.resource_node import ResourceNode
+    g = Game()
+    g._apply_faction("human")
+    g.state = "playing"
+    g.selected_units = [g.hero]
+
+    mine = ResourceNode(10_000, 10_000, "gold", 1000)  # is_mine auto=True pour gold
+    g.resource_nodes = [mine]
+
+    # Clic droit sur la mine (coord souris = map - caméra, passé en tuple).
+    # Ne doit pas lever.
+    g._handle_right_click((mine.x - g.camera.x, mine.y - g.camera.y))
+
+
 def test_worker_produit_apres_demarrage_campagne():
     """Régression : après _start_campaign, un worker produit doit apparaître en jeu."""
     from core.game import Game

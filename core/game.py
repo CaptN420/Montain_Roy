@@ -1207,7 +1207,7 @@ class Game:
             if clicked_resource and not clicked_resource.is_depleted():
                 # Cas 1: Mine d'or - assigner le worker (max 3)
                 if clicked_resource.resource_type == "gold" and clicked_resource.is_mine:
-                    if unit.unit_type == "worker":
+                    if getattr(unit, 'unit_type', '') == "worker":
                         # Assigner le worker à la mine
                         if clicked_resource.assign_worker(unit):
                             unit.target_resource = clicked_resource
@@ -1224,7 +1224,7 @@ class Game:
 
                 # Cas 3: Récolte normale (food ou bois) - UNIQUEMENT pour les workers
                 else:
-                    if unit.unit_type in ("worker", "builder"):
+                    if getattr(unit, 'unit_type', '') in ("worker", "builder"):
                         self.movement_system.move_to(unit, clicked_resource.x, clicked_resource.y)
                         unit.target_resource = clicked_resource
                     # Unités de combat : le clic sur une ressource ne fait que s'en approcher

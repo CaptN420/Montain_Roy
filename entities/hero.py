@@ -14,6 +14,10 @@ class Hero(Unit):
     def __init__(self, x: int, y: int, faction: str = "player"):
         super().__init__(x, y, faction)
         
+        # Le héros étend Unit : il DOIT définir unit_type (certains systèmes
+        # y accèdent sans garde, ex. _handle_right_click en jeu).
+        self.unit_type = "hero"
+        
         # Stats améliorées du héros
         self.max_hp = 500
         self.hp = self.max_hp
