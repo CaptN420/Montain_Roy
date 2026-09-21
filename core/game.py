@@ -139,6 +139,10 @@ class Game:
             "time_survived": 0,
         }
         self.mission_timer = 0
+
+        # Accélération du temps (fast-forward) : 1/2/4/8/16
+        self.TIME_SCALES = (1, 2, 4, 8, 16)
+        self.time_scale = 1  # index 0 de TIME_SCALES
         
         # Initialize game entities
         self._initialize_entities()
@@ -381,7 +385,7 @@ class Game:
             dt = self.clock.tick(FPS) / 1000.0
             
             self.handle_events()
-            self.update(dt)
+            self.update(dt * self.time_scale)
             self.draw()
             pygame.display.flip()
         
@@ -499,6 +503,10 @@ class Game:
                     # Formations (Touche F pour ouvrir menu)
                     elif event.key == pygame.K_f:
                         self._cycle_formation()
+                    
+                    # Accélération du temps [G] : 1/2/4/8/16
+                    elif event.key == pygame.K_g:
+                        self._cycle_time_scale()
                     
                     # Recherche [T]: doit passer par un bâtiment de recherche (académie ou équivalent)
                     elif event.key == pygame.K_t:
@@ -1434,6 +1442,21 @@ class Game:
         
         self.audio_events.on_ui_click()
     
+    def _cycle_time_scale(self):
+        """Cycle l'accélération du temps : 1 -> 2 -> 4 -> 8 -> 16 -> 1."""
+        idx = self.TIME_SCALES.index(self.time_scale)
+        self.set_time_scale(self.TIME_SCALES[(idx + 1) % len(self.TIME_SCALES)])
+        self.audio_events.on_ui_click()
+    
+    def set_time_scale(self, scale: int):
+        """Règle le multiplicateur de temps (ignoré si non valide)."""
+        if scale in self.TIME_SCALES:
+            self.time_scale = scale
+    
+    def effective_dt(self, dt: float) -> float:
+        """dt effectif à l'échelle temporelle courante (dt * time_scale)."""
+        return dt * self.time_scale
+    
     def _research_next_tech(self):
         """Recherche la prochaine technologie disponible."""
         available = self.tech_tree.get_available_research(
@@ -1800,6 +1823,12 @@ class Game:
 
         timer_text = font.render(f"Temps: {int(self.mission_timer)}s", True, (200, 200, 200))
         self.screen.blit(timer_text, (20, y))
+
+        # Indicateur d'accélération du temps (visible quand != 1x)
+        if self.time_scale != 1:
+            speed_color = (255, 170, 0)
+            speed_text = font.render(f"Vitesse x{self.time_scale} [G]", True, speed_color)
+            self.screen.blit(speed_text, (20, y + 24))
     
     def _draw_build_menu(self):
         """Dessine le menu de construction (choix du bâtiment par catégorie)."""
