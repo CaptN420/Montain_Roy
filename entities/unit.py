@@ -211,6 +211,7 @@ class Unit:
     def to_dict(self) -> dict:
         """Sérialise l'unité."""
         return {
+            "unit_type": getattr(self, "unit_type", ""),
             "x": self.x,
             "y": self.y,
             "faction": self.faction,

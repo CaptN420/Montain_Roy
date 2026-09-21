@@ -11,13 +11,16 @@ from settings import COLORS
 class Hero(Unit):
     """Classe pour le héros du joueur."""
     
-    def __init__(self, x: int, y: int, faction: str = "player"):
+    def __init__(self, x: int, y: int, faction: str = "player", config: dict = None):
         super().__init__(x, y, faction)
         
         # Le héros étend Unit : il DOIT définir unit_type (certains systèmes
         # y accèdent sans garde, ex. _handle_right_click en jeu).
         self.unit_type = "hero"
-        
+        self.name = "Héros"
+        self.hero_role = ""
+        self.faction_id = ""
+
         # Stats améliorées du héros
         self.max_hp = 500
         self.hp = self.max_hp
@@ -82,6 +85,29 @@ class Hero(Unit):
         
         # Inventaire simple
         self.inventory = []
+
+        # Appliquer la config faction/archétype si fournie
+        if config:
+            self.apply_config(config)
+
+    def apply_config(self, config: dict):
+        """Applique une config (registre hero_types) : identité, stats, compétences."""
+        self.unit_type = config.get("unit_type", self.unit_type)
+        self.name = config.get("name", self.name)
+        self.hero_role = config.get("role", self.hero_role)
+        self.faction_id = config.get("faction_id", self.faction_id)
+        stats = config.get("stats", {})
+        for k, v in stats.items():
+            setattr(self, k, v)
+        self.hp = getattr(self, "max_hp", 500)
+        self.max_mana = stats.get("max_mana", self.max_mana)
+        self.mana = self.max_mana
+        if config.get("skills"):
+            self.skills = [dict(s) for s in config["skills"]]
+        # stats dict peut ne pas inclure ces champs : garder les valeurs de base
+        for attr in ("damage", "armor", "speed", "range"):
+            if attr not in stats:
+                setattr(self, attr, getattr(self, attr))
     
     def get_color(self) -> tuple:
         """Retourne la couleur dorée du héros."""
@@ -242,6 +268,10 @@ class Hero(Unit):
     def to_dict(self) -> dict:
         """Sérialise le héros."""
         return {
+            "unit_type": self.unit_type,
+            "name": self.name,
+            "role": self.hero_role,
+            "faction_id": self.faction_id,
             "x": self.x,
             "y": self.y,
             "faction": self.faction,

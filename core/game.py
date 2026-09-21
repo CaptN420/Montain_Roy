@@ -496,10 +496,12 @@ class Game:
                         else:
                             self._deselect_building()
                     
-                    # Compétences
-                    elif event.key == pygame.K_SPACE and self.hero:
-                        self.hero.use_skill(0, units=self.units)
-                        self.audio_events.on_skill_used(0)
+                    # Compétences : agissent sur le héros sélectionné (s'il est sélectionné)
+                    elif event.key == pygame.K_SPACE:
+                        hero = self._selected_hero()
+                        if hero:
+                            hero.use_skill(0, units=self.units)
+                            self.audio_events.on_skill_used(0)
                     
                     # Formations (Touche F pour ouvrir menu)
                     elif event.key == pygame.K_f:
@@ -509,19 +511,23 @@ class Game:
                     elif event.key == pygame.K_g:
                         self._cycle_time_scale()
                     
-                    # Recruter le héros [H] depuis un bâtiment à héros sélectionné
+                    # Recruter le héros [H] : invoque le premier héros de faction (guerrier)
                     elif event.key == pygame.K_h:
                         if self.build_menu_open:
                             self.build_menu_open = False
-                        self._recruit_hero()
+                        self._summon_hero(0)
                     
                     # Recherche [T]: doit passer par un bâtiment de recherche (académie ou équivalent)
                     elif event.key == pygame.K_t:
                         self._handle_research_key()
-                    elif event.key == pygame.K_q and self.hero:
-                        self.hero.use_skill(1, units=self.units)
-                    elif event.key == pygame.K_e and self.hero:
-                        self.hero.use_skill(2, units=self.units)
+                    elif event.key == pygame.K_q:
+                        hero = self._selected_hero()
+                        if hero:
+                            hero.use_skill(1, units=self.units)
+                    elif event.key == pygame.K_e:
+                        hero = self._selected_hero()
+                        if hero:
+                            hero.use_skill(2, units=self.units)
                 
                 elif event.type == pygame.MOUSEMOTION:
                     # Update construction preview position
@@ -849,11 +855,24 @@ class Game:
             self.units[:] = []  # mutation sur place : garder la référence ConstructionSystem
             if "units" in save_data:
                 for unit_data in save_data["units"]:
-                    unit = create_unit(unit_data.get("type", "warrior"),
+                    utype = unit_data.get("unit_type") or unit_data.get("type", "warrior")
+                    unit = create_unit(utype,
                                       unit_data["x"], unit_data["y"],
                                       unit_data.get("faction", "player"))
                     if "hp" in unit_data:
                         unit.hp = unit_data["hp"]
+                    # Restaurer l'état du héros (niveau/XP/mana/compétences)
+                    if hasattr(unit, "skills"):
+                        if "level" in unit_data:
+                            unit.level = unit_data["level"]
+                        if "experience" in unit_data:
+                            unit.experience = unit_data["experience"]
+                        if "mana" in unit_data:
+                            unit.mana = unit_data["mana"]
+                        if unit_data.get("skills"):
+                            unit.skills = unit_data["skills"]
+                        if "name" in unit_data:
+                            unit.name = unit_data["name"]
                     # Réattacher le worker au Game (pour la récolte/dépôt)
                     if hasattr(unit, 'unit_type') and unit.unit_type in ("worker", "builder"):
                         unit.game = self
@@ -953,43 +972,64 @@ class Game:
                 self.faction.apply_unit_modifiers(new_unit)
                 self.faction.apply_worker_bonus(new_unit)
 
-    def _recruit_hero(self, hall=None):
-        """Recrute / ressuscite le héros depuis un bâtiment à héros (coût).
+    def _selected_hero(self):
+        """Retourne le premier héros sélectionné (parmi selected_units), sinon None."""
+        for u in self.selected_units:
+            if self._is_hero(u):
+                return u
+        return None
 
-        `hall` : bâtiment à héros (par défaut le bâtiment sélectionné).
-        Le héros n'est plus gratuit : il faut construire un HeroHall puis
-        le recruter ici contre des ressources.
+    def _player_heroes(self):
+        """Tous les héros vivants du joueur (coexistent sur le terrain)."""
+        return [u for u in self.units
+                if getattr(u, "faction", "") == "player" and self._is_hero(u)
+                and getattr(u, "hp", 0) > 0]
+
+    @staticmethod
+    def _is_hero(unit) -> bool:
+        return bool(getattr(unit, "unit_type", "").startswith("hero_")
+                    or hasattr(unit, "skills"))
+
+    def _summon_hero(self, index: int):
+        """Invoque le héros ~index~ de la faction courante depuis un bâtiment à héros.
+
+        Les 3 héros de chaque faction peuvent être invoqués — et coexister sur le
+        terrain — chacun pour un coût en ressources. Un héros déjà présent/vivant
+        ne peut pas être dédoublé.
         """
-        if hall is None:
-            hall = self._selected_building
+        from entities.hero_types import (faction_hero_types, HERO_ORDER,
+                                         HERO_SUMMON_COSTS, create_faction_hero)
+        hall = self._selected_building
         if not hall or getattr(hall, "building_type", "") != "hero_hall":
             self._show_ui_message("Sélectionnez d'abord un bâtiment à héros (clic droit).",
                                   (255, 100, 100))
             return
-        if self.hero is not None and self.hero in self.units and self.hero.is_alive():
-            self._show_ui_message("Le héros est déjà en vie.", (255, 200, 100))
+        if not self.faction:
             return
-        if not self.economy.can_afford(self.HERO_RECRUIT_COST):
-            self._show_ui_message("Ressources insuffisantes pour recruter le héros.",
+
+        roles = list(HERO_ORDER)
+        if not (0 <= index < len(roles)):
+            return
+        role = roles[index]
+        unit_type = faction_hero_types(self.faction_id)[index]
+        cost = HERO_SUMMON_COSTS[role]
+
+        # Déjà invoqué et vivant ? Pas de doublon.
+        if any(u for u in self.units
+               if getattr(u, "unit_type", "") == unit_type
+               and u.faction == "player" and u.is_alive()):
+            self._show_ui_message(f"Héros {role} déjà présent.", (255, 200, 100))
+            return
+        if not self.economy.can_afford(cost):
+            self._show_ui_message("Ressources insuffisantes pour invoquer le héros.",
                                   (255, 100, 100))
             return
 
-        self.economy.pay_cost(self.HERO_RECRUIT_COST)
-        if self.hero is None:
-            from entities.hero import Hero
-            self.hero = Hero(hall.x + 40, hall.y, "player")
-            if self.faction:
-                self.faction.apply_unit_modifiers(self.hero)
-        else:
-            # Résurrection après mort (le héros mort a été retiré de self.units).
-            self.hero.hp = self.hero.max_hp
-            self.hero.x = hall.x + 40
-            self.hero.y = hall.y
-            self.hero.target = None
-            self.hero.is_moving = False
-        if self.hero not in self.units:
-            self.units.append(self.hero)
-        self._show_ui_message("Héros recruté !", (100, 255, 100))
+        self.economy.pay_cost(cost)
+        hero = create_faction_hero(self.faction_id, role, hall.x + 40, hall.y, side="player")
+        hero.game = self
+        self.units.append(hero)
+        self._show_ui_message(f"{hero.name} invoqué !", (100, 255, 100))
 
     def _produce_unit(self, unit_type: str):
         """Produit une unité."""
@@ -1057,6 +1097,10 @@ class Game:
         """Produit l'unité ~index~ du bâtiment sélectionné, en sautant les vérrouées."""
         if not self._selected_building:
             print("Sélectionnez d'abord un bâtiment de production (clic droit).")
+            return
+        # Bâtiment à héros : les touches 1-3 invoquent les héros de la faction.
+        if self._selected_building.building_type == "hero_hall":
+            self._summon_hero(index)
             return
         # Unités de combat de ce bâtiment, triées par ordre choisi par la faction
         units = self._get_building_units(self._selected_building)
@@ -1449,8 +1493,8 @@ class Game:
                     wood=rewards.get("wood", 0),
                     food=rewards.get("food", 0)
                 )
-                if self.hero:
-                    self.hero.gain_experience(rewards.get("experience", 0))
+                for h in self._player_heroes():
+                    h.gain_experience(rewards.get("experience", 0))
             
             if self.campaign.is_campaign_complete():
                 self.state = "victory"
@@ -1797,7 +1841,7 @@ class Game:
         
         # Draw HUD
         self.hud.draw_resources(self.economy, self.units, self.buildings, self.faction)
-        self.hud.draw_selection_panel(self.selected_units, self.hero)
+        self.hud.draw_selection_panel(self.selected_units, self._selected_hero())
         self.hud.draw_minimap(self.game_map, self.camera, self.units, self.buildings)
         self.hud.draw_production_buttons(self.economy, self.selected_units, self._selected_building,
                                          self.production_system, self.faction, self)
@@ -1809,8 +1853,9 @@ class Game:
         if self.selected_building_type and self.construction_preview_pos:
             self._draw_construction_preview()
 
-        if self.hero:
-            self.hud.draw_skill_buttons(self.hero)
+        sel_hero = self._selected_hero()
+        if sel_hero:
+            self.hud.draw_skill_buttons(sel_hero)
         
         # Draw formation info
         self._draw_formation_hud()

@@ -1,8 +1,9 @@
-"""Tests du bâtiment à héros (HeroHall) et du recrutement.
+"""Tests du bâtiment à héros (HeroHall) et de l'invocation des 3 héros/faction.
 
-Valide : héros plus gratuit au départ, hero_hall constructible par toutes les
-factions, et la logique de recrutement (sans bâtiment, création + coût, refus
-si héros vivant, refus sans ressources, résurrection après mort).
+Valide : plus de héros gratuit, hero_hall constructible par toutes les factions,
+les 3 héros coexistent (invoqués, coût chacun), pas de doublon d'un héros vivant,
+refus sans ressources, identité des héros (unit_type/nom/stats), et round-trip
+via create_unit (pour la sauvegarde).
 """
 import os
 import sys
@@ -14,10 +15,7 @@ import pygame
 pygame.init()
 pygame.display.set_mode((200, 200))
 
-import pytest
-
 from entities.building import HeroHall
-from entities.hero import Hero
 
 
 def _game(faction="human"):
@@ -25,9 +23,9 @@ def _game(faction="human"):
     g = Game()
     g._apply_faction(faction)
     g.state = "playing"
-    g.economy.gold = 1000
-    g.economy.wood = 1000
-    g.economy.food = 1000
+    g.economy.gold = 5000
+    g.economy.wood = 5000
+    g.economy.food = 5000
     return g
 
 
@@ -41,7 +39,7 @@ def _select_hall(g, x=100, y=100):
 def test_heros_gratuit_supprime():
     g = _game()
     assert g.hero is None, "plus de héros gratuit au départ"
-    assert not any(getattr(u, "unit_type", "") == "hero" for u in g.units)
+    assert not any(getattr(u, "unit_type", "") in ("hero",) for u in g.units)
 
 
 # ---------------------------------------------------------------- constructible
@@ -49,8 +47,7 @@ def test_herohall_constructible_par_toutes_factions():
     from systems.factions import get_factions
     for fid in get_factions():
         g = _game(fid)
-        avail = g.construction_system.get_available_buildings()
-        assert "hero_hall" in avail, f"hero_hall doit être constructible pour {fid}"
+        assert "hero_hall" in g.construction_system.get_available_buildings()
 
 
 def test_create_herohall_retourne_le_bon_type():
@@ -60,60 +57,108 @@ def test_create_herohall_retourne_le_bon_type():
     assert isinstance(b, HeroHall)
 
 
-# ---------------------------------------------------------------- recrutement
-def test_recrutement_sans_batiment_ne_fait_rien():
+# ---------------------------------------------------------------- identité
+def test_chaque_faction_a_3_heros_uniques():
+    from entities.hero_types import faction_hero_types, HERO_IDENTITY
+    for fid, roles in HERO_IDENTITY.items():
+        types = faction_hero_types(fid)
+        assert len(types) == 3
+        assert len(set(types)) == 3, "unit_type distincts par faction"
+        names = [info[1] for info in roles.values()]
+        assert len(set(names)) == 3
+
+
+def test_hero_injecte_stats_de_faction():
+    from entities.hero_types import create_faction_hero
+    # Le nain augmente l'armure ; l'orc les dégâts.
+    dwarf = create_faction_hero("dwarf", "warrior", 0, 0)
+    orc = create_faction_hero("orc", "warrior", 0, 0)
+    assert dwarf.armor > orc.armor
+    assert orc.damage > dwarf.damage
+    assert dwarf.unit_type.startswith("hero_")
+
+
+def test_create_unit_reconstruit_le_heros():
+    from entities.unit_types import create_unit
+    from entities.hero import Hero
+    h = create_unit("hero_swordmaster", 10, 10, "player")
+    assert isinstance(h, Hero)
+    assert h.unit_type == "hero_swordmaster"
+    assert h.faction_id == "human"
+    assert h.name == "Lionel"
+
+
+# ---------------------------------------------------------------- invocation
+def test_invocation_sans_batiment_ne_fait_rien():
     g = _game()
     gold_before = g.economy.gold
-    g._recruit_hero()
-    assert g.hero is None
-    assert g.economy.gold == gold_before, "aucun débit sans bâtiment à héros"
+    n_units = len(g.units)
+    g._summon_hero(0)
+    assert len(g.units) == n_units, "aucune unité sans bâtiment à héros"
+    assert g.economy.gold == gold_before
 
 
-def test_recrutement_cree_le_heros_et_debite():
+def test_invoque_3_heros_coexistants():
     g = _game()
     _select_hall(g)
-    gold_before = g.economy.gold
-    g._recruit_hero()
+    n_units = len(g.units)
+    for i in range(3):
+        g._summon_hero(i)
+    heroes = [u for u in g.units if u.unit_type.startswith("hero_")]
+    assert len(heroes) == 3, "les 3 héros coexistent"
+    assert len({h.unit_type for h in heroes}) == 3
+    assert len(g.units) == n_units + 3
 
-    assert g.hero is not None
-    assert g.hero in g.units, "le héros doit apparaître parmi les unités"
-    assert g.economy.gold == gold_before - g.HERO_RECRUIT_COST["gold"]
 
-
-def test_recrutement_ignore_heros_deja_vivant():
+def test_invocation_debite_le_cout():
+    from entities.hero_types import HERO_SUMMON_COSTS
     g = _game()
     _select_hall(g)
-    g._recruit_hero()
-    count_after_first = len(g.units)
+    before = g.economy.gold
+    g._summon_hero(0)  # warrior
+    assert g.economy.gold == before - HERO_SUMMON_COSTS["warrior"]["gold"]
+
+
+def test_invocation_refuse_le_doublon_vivant():
+    g = _game()
+    _select_hall(g)
+    g._summon_hero(0)
+    count = len(g.units)
     gold_after_first = g.economy.gold
+    g._summon_hero(0)  # même héros déjà vivant
+    assert len(g.units) == count, "pas de doublon"
+    assert g.economy.gold == gold_after_first
 
-    g._recruit_hero()  # héros toujours vivant -> refus
-    assert len(g.units) == count_after_first, "pas de second héros"
-    assert g.economy.gold == gold_after_first, "pas de second débit"
 
-
-def test_recrutement_refuse_sans_ressources():
+def test_invocation_refuse_sans_ressources():
     g = _game()
     _select_hall(g)
-    g.economy.gold = 10  # < 250, bois/nourriture OK
-    g._recruit_hero()
-    assert g.hero is None, "pas de héros sans ressources"
-    assert g.economy.gold == 10, "ressources intactes quand le recrutement échoue"
+    g.economy.gold = 10
+    g._summon_hero(0)
+    assert not any(u.unit_type.startswith("hero_") for u in g.units)
+    assert g.economy.gold == 10
 
 
-def test_recrutement_ressuscite_le_heros_mort():
+# ---------------------------------------------------------------- round-trip
+def test_heros_roundtrip_to_dict_create_unit():
+    from entities.hero_types import create_faction_hero
+    from entities.unit_types import create_unit
+    h = create_faction_hero("elf", "archer", 30, 40)
+    d = h.to_dict()
+
+    restored = create_unit(d["unit_type"], d["x"], d["y"], d["faction"])
+    assert restored.unit_type == h.unit_type
+    assert restored.faction_id == "elf"
+    assert len(restored.skills) == len(h.skills) == 4
+
+
+def test_selected_hero_parmi_plusieurs():
     g = _game()
     _select_hall(g)
-    g._recruit_hero()
-    hero = g.hero
-
-    # Simuler la mort : le héros est retiré de units et hp à 0.
-    g.units.remove(hero)
-    hero.hp = 0
-    count_before_revive = len(g.units)
-
-    g._recruit_hero()
-    assert g.hero is hero, "on ressuscite le même héros (niveau/XP conservés)"
-    assert hero in g.units
-    assert hero.hp == hero.max_hp
-    assert len(g.units) == count_before_revive + 1, "réajout une seule fois"
+    for i in range(3):
+        g._summon_hero(i)
+    heroes = [u for u in g.units if u.unit_type.startswith("hero_")]
+    # Sélectionner uniquement le 3e héros
+    g.selected_units = [heroes[2]]
+    assert g._selected_hero() is heroes[2]
+    assert len(g._player_heroes()) == 3

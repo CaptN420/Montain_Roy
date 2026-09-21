@@ -330,7 +330,20 @@ def create_unit(unit_type: str, x: int, y: int, faction: str = "player", game=No
     }
 
     unit_class = units.get(unit_type, Warrior)
-    unit = unit_class(x, y, faction)
+    # Héros de faction : reconstruit via le registre (hero_types).
+    if isinstance(unit_type, str) and unit_type.startswith("hero_"):
+        from entities.hero_types import create_faction_hero, resolve_unit_type
+        res = resolve_unit_type(unit_type)
+        if res is not None:
+            gfaction, role = res
+            unit = create_faction_hero(gfaction, role, x, y, side=faction)
+            if game is not None:
+                unit.game = game
+            return unit
+        from entities.hero import Hero
+        unit = Hero(x, y, faction)
+    else:
+        unit = unit_class(x, y, faction)
     # Les __init__ des sous-classes ne prennent pas encore le paramètre `game` :
     # on l'assigne après construction (base Unit.__init__ accepte game=None).
     if game is not None:
