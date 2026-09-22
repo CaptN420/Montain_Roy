@@ -165,6 +165,22 @@ def test_hud_affiche_panneau_invocation_heros_sans_crash():
                                   g.production_system, g.faction, g)
 
 
+def test_heros_mort_retire_de_la_selection():
+    """Un héros sélectionné qui meurt doit être purgé de selected_units."""
+    g = _game()
+    _select_hall(g)
+    g._summon_hero(0)
+    hero = [u for u in g.units if u.unit_type.startswith("hero_")][0]
+    g.selected_units = [hero]
+    assert g._selected_hero() is hero
+
+    hero.hp = 0
+    g.update(0.016)  # déclenche la suppression des morts
+    assert hero not in g.units, "héros mort retiré de units"
+    assert hero not in g.selected_units, "héros mort purgé de la sélection"
+    assert g._selected_hero() is None
+
+
 def test_selected_hero_parmi_plusieurs():
     g = _game()
     _select_hall(g)

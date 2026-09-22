@@ -39,9 +39,8 @@ class CombatSystem:
         if target.hp <= 0:
             return False
         
-        # Appliquer les dégâts
-        actual_damage = max(1, attacker.damage - target.armor)
-        target.take_damage(actual_damage)
+        # take_damage applique déjà l'armure : on passe les dégâts bruts.
+        target.take_damage(attacker.damage)
         
         # Effet visuel simple (sera amélioré plus tard)
         self._draw_attack_effect(attacker, target)

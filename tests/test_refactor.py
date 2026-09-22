@@ -275,3 +275,17 @@ def test_create_unit_assigne_game_apres_construction():
 def test_create_unit_sans_game_laisse_game_a_None():
     unit = create_unit("archer", 10, 10, "player")
     assert getattr(unit, "game", None) is None
+
+
+def test_armure_appliquee_une_seule_fois_en_combat():
+    """Régression : take_damage applique déjà l'armure, les appelants ne doivent PAS
+    la retrancher aussi (double application faisait 15 vs armure 8 -> 1 dégât)."""
+    from entities.unit_types import Warrior, Knight
+    attacker = Warrior(0, 0, "player")
+    attacker.attack_timer = attacker.attack_speed
+    target = Knight(50, 0, "enemy")  # armure 8, hp 200
+    attacker.target = target
+    before = target.hp
+    attacker.update(0.016)
+    dealt = before - target.hp
+    assert dealt == 15 - 8, f"armure appliquée une fois : {dealt} != 7"

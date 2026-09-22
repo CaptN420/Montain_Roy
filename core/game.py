@@ -973,9 +973,9 @@ class Game:
                 self.faction.apply_worker_bonus(new_unit)
 
     def _selected_hero(self):
-        """Retourne le premier héros sélectionné (parmi selected_units), sinon None."""
+        """Retourne le premier héros vivant sélectionné (parmi selected_units), sinon None."""
         for u in self.selected_units:
-            if self._is_hero(u):
+            if self._is_hero(u) and getattr(u, "hp", 0) > 0:
                 return u
         return None
 
@@ -1400,6 +1400,10 @@ class Game:
                                         "ordonner l'attaque.")
                 
                 self.units.remove(unit)
+                # Purger aussi la sélection : une unité morte ne doit pas rester sélectionnée
+                # (HUD/formation héros, sinon dessin d'une unité morte).
+                if unit in self.selected_units:
+                    self.selected_units.remove(unit)
         
         # Gérer les bâtiments détruits
         for building in self.buildings[:]:

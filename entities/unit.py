@@ -89,7 +89,7 @@ class Unit:
                 self.attack_timer += dt
                 if self.attack_timer >= self.attack_speed:
                     self.attack_timer = 0
-                    actual_damage = max(1, (self.damage * synergies["damage_mult"]) - getattr(self.target, 'armor', 0))
+                    actual_damage = self.damage * synergies["damage_mult"]
                     self.target.take_damage(actual_damage, attacker=self)
             else:
                 # Déplacer vers la cible

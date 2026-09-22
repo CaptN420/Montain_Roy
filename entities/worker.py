@@ -289,8 +289,8 @@ class Worker(Unit):
                 self.attack_timer += dt
                 if self.attack_timer >= self.attack_speed:
                     self.attack_timer = 0
-                    actual_damage = max(1, self.damage - getattr(self.target, 'armor', 0))
-                    self.target.take_damage(actual_damage, attacker=self)
+                    # take_damage applique déjà l'armure : on passe les dégâts bruts.
+                    self.target.take_damage(self.damage, attacker=self)
             else:
                 # Déplacer vers la cible
                 self.is_moving = True
