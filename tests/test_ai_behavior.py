@@ -223,3 +223,86 @@ def test_produit_nouvelle_unite_a_game_reference():
     ai._produce_units()
     new_unit = game.units[-1]
     assert new_unit.game is game, "l'unité produite doit référencer le Game (synergie/récolte)"
+
+
+# --------------------------------------------------------------- héros IA
+def _hero_game(buildings, gold=5000, wood=5000, food=5000):
+    econ = SimpleNamespace(gold=gold, wood=wood, food=food,
+                           get_max_population=lambda b: 99)
+    game = _game(units=[SimpleNamespace(faction="enemy", x=0, y=0, unit_type="worker",
+                                        hp=100, target_resource=None)],
+                 buildings=buildings, economy=econ, enemy_economy=econ)
+    game.faction_id = "human"
+    game.construction_system = SimpleNamespace(
+        validate_build_position=lambda *a, **k: (True, ""))
+    return game
+
+
+def _enemy_heroes(game):
+    return [u for u in game.units
+            if getattr(u, "faction", "") == "enemy"
+            and getattr(u, "unit_type", "").startswith("hero_")]
+
+
+def test_ai_construit_un_herohall_quand_il_a_deja_une_caserne():
+    from entities.building import HeroHall
+    from entities.building import Barracks
+    barracks = Barracks(0, 0, "enemy")
+    game = _hero_game([barracks])
+    ai = EnemyAI(game)
+    gold = game.enemy_economy.gold
+    ai._build_structures()
+    halls = [b for b in game.buildings if getattr(b, "building_type", "") == "hero_hall"
+             and b.faction == "enemy"]
+    assert isinstance(halls[0], HeroHall), "l'IA doit construire un bâtiment à héros"
+    # 180 or / 120 bois / 40 nourriture
+    assert game.enemy_economy.gold == gold - 180
+    assert game.enemy_economy.wood == 5000 - 120
+
+
+def test_ai_invoque_3_heros_ennemis():
+    from entities.building import HeroHall
+    hall = HeroHall(200, 200, "enemy")
+    game = _hero_game([hall])
+    ai = EnemyAI(game)
+    ai._manage_heroes()
+    ai._manage_heroes()
+    ai._manage_heroes()
+
+    heroes = _enemy_heroes(game)
+    assert len(heroes) == 3, "l'IA doit pouvoir invoquer ses 3 héros"
+    assert len({h.unit_type for h in heroes}) == 3
+    assert all(h.faction == "enemy" for h in heroes)
+
+
+def test_ai_paye_les_heros_invoques():
+    from entities.building import HeroHall
+    from entities.hero_types import HERO_SUMMON_COSTS, HERO_ORDER
+    hall = HeroHall(200, 200, "enemy")
+    game = _hero_game([hall])
+    gold_before = game.enemy_economy.gold
+    ai = EnemyAI(game)
+    ai._manage_heroes()  # warrior d'abord
+    assert game.enemy_economy.gold == gold_before - HERO_SUMMON_COSTS["warrior"]["gold"]
+
+
+def test_ai_ne_dedouble_pas_heros_vivant():
+    from entities.building import HeroHall
+    hall = HeroHall(200, 200, "enemy")
+    game = _hero_game([hall])
+    ai = EnemyAI(game)
+    for _ in range(3):
+        ai._manage_heroes()
+    count = len(_enemy_heroes(game))
+    gold = game.enemy_economy.gold
+    ai._manage_heroes()  # un 4e tick : rien à invoquer
+    assert len(_enemy_heroes(game)) == count
+    assert game.enemy_economy.gold == gold
+
+
+def test_ai_sans_herohall_n_invoque_pas():
+    game = _hero_game([SimpleNamespace(building_type="barracks", faction="enemy",
+                                       x=0, y=0, hp=100)])
+    ai = EnemyAI(game)
+    ai._manage_heroes()
+    assert _enemy_heroes(game) == []

@@ -6,7 +6,7 @@ Mountain_Roy - Enemy AI System (Intelligence Artificielle Ennemie)
 import random
 import pygame
 from entities.unit_types import create_unit
-from entities.building import TownHall, Barracks, Farm, Tower, CollectionBuilding
+from entities.building import TownHall, Barracks, Farm, Tower, CollectionBuilding, HeroHall
 
 
 DEFAULT_ENEMY_CONFIG = {
@@ -52,6 +52,7 @@ class EnemyAI:
         self.building_costs = {
             "barracks": {"gold": 150, "wood": 100, "food": 20},
             "tower": {"gold": 100, "wood": 100, "food": 10},
+            "hero_hall": {"gold": 180, "wood": 120, "food": 40},
         }
     
     def update(self, dt: float):
@@ -62,6 +63,9 @@ class EnemyAI:
         if self.state_timer > 5.0:
             self.state_timer = 0
             self._choose_state()
+        
+        # Invoquer les héros ennemis dès qu'un bâtiment à héros est disponible
+        self._manage_heroes()
         
         # Exécuter l'état actuel
         if self.state == "gather":
@@ -146,39 +150,74 @@ class EnemyAI:
                     break
     
     def _build_structures(self):
-        """Construit des structures."""
-        # Vérifier si on peut construire une caserne avec les ressources ennemies
-        cost = self.building_costs.get("barracks", {"gold": 150, "wood": 100, "food": 20})
+        """Construit la caserne puis un bâtiment à héros (chaque joueur)."""
         ec = self.game.enemy_economy
+        # Priorité : barraques d'abord, puis bâtiment à héros pour invoquer les héros.
+        for btype in ("barracks", "hero_hall"):
+            if any(b.building_type == btype and getattr(b, "faction", "") == "enemy"
+                   for b in self.game.buildings):
+                continue  # déjà présent
+            cost = self.building_costs.get(btype)
+            if cost is None:
+                continue
+            if not (ec.gold >= cost["gold"] and ec.wood >= cost["wood"]
+                    and ec.food >= cost["food"]):
+                continue  # pas assez de ressources : essayer le bâtiment suivant
+            enemy_units = [u for u in self.game.units if u.faction == "enemy"]
+            if not enemy_units:
+                break
+            base = enemy_units[0]
+            for offset_x, offset_y in [(64, 0), (0, 64), (-64, 0), (0, -64), (64, 64)]:
+                new_x = base.x + offset_x
+                new_y = base.y + offset_y
 
-        if not (ec.gold >= cost["gold"] and
-                ec.wood >= cost["wood"] and
-                ec.food >= cost["food"]):
-            return
-
-        # Trouver un emplacement proche d'une unité ennemie
-        enemy_units = [u for u in self.game.units if u.faction == "enemy"]
-        if not enemy_units:
-            return
-
-        base = enemy_units[0]
-        # Essayer plusieurs positions pour éviter les chevauchements
-        for offset_x, offset_y in [(64, 0), (0, 64), (-64, 0), (0, -64), (64, 64)]:
-            new_x = base.x + offset_x
-            new_y = base.y + offset_y
-
-            # Valider la position via le système de construction
-            ok, _ = self.game.construction_system.validate_build_position("barracks", new_x, new_y)
-            if ok:
-                # Créer le bâtiment
-                new_building = Barracks(new_x, new_y, "enemy")
+                ok, _ = self.game.construction_system.validate_build_position(btype, new_x, new_y)
+                if not ok:
+                    continue
+                building_cls = Barracks if btype == "barracks" else HeroHall
+                new_building = building_cls(new_x, new_y, "enemy")
                 self.game.buildings.append(new_building)
-
-                # Déduire les ressources ennemies
                 ec.gold -= cost["gold"]
                 ec.wood -= cost["wood"]
                 ec.food -= cost["food"]
-                return
+                return  # un bâtiment par défaut : passer la main
+    
+    def _manage_heroes(self):
+        """Invoque les héros ennemis (3/faction) depuis un bâtiment à héros.
+
+        Chaque joueur peut invoquer ses 3 héros : l'IA fait de même quand elle
+        possède un hero_hall et les ressources — sans dédoubler un héros vivant.
+        """
+        from entities.hero_types import (HERO_ORDER, HERO_SUMMON_COSTS,
+                                         faction_hero_types, create_faction_hero)
+        fid = getattr(self.game, "faction_id", None)
+        if not fid:
+            return
+        halls = [b for b in self.game.buildings
+                 if b.building_type == "hero_hall" and getattr(b, "faction", "") == "enemy"]
+        if not halls:
+            return
+        hall = halls[0]
+        ec = self.game.enemy_economy
+        types = faction_hero_types(fid)
+        alive = {u.unit_type for u in self.game.units
+                 if getattr(u, "faction", "") == "enemy"
+                 and getattr(u, "unit_type", "").startswith("hero_")
+                 and getattr(u, "hp", 0) > 0}
+        for i, role in enumerate(HERO_ORDER):
+            unit_type = types[i]
+            if unit_type in alive:
+                continue
+            cost = HERO_SUMMON_COSTS[role]
+            if (ec.gold >= cost["gold"] and ec.wood >= cost["wood"]
+                    and ec.food >= cost["food"]):
+                hero = create_faction_hero(fid, role, hall.x + 40, hall.y, side="enemy")
+                hero.game = self.game
+                self.game.units.append(hero)
+                ec.gold -= cost["gold"]
+                ec.wood -= cost["wood"]
+                ec.food -= cost["food"]
+                return  # un héros par tick
     
     def _produce_units(self):
         """Produit des unités (paye les vraies ressources ennemies)."""
