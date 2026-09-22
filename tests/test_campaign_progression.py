@@ -113,6 +113,54 @@ def test_campagne_parcourt_toutes_les_missions():
     assert c.is_campaign_complete()
 
 
+def test_victoire_atteignable_en_detruisant_la_base_ennemie():
+    """Régression 'game unwinnable' : l'IA re-produit/re-construit à l'infini, donc
+    exiger 0 unité ET 0 bâtiment ennemis restait inatteignable. Victoire = base
+    (town_hall) ennemie détruite, même si des unités ennemies survivent."""
+    from core.game import Game
+    from systems.campaign import create_default_campaign
+    g = Game()
+    g._apply_faction("human")
+    g.state = "playing"
+    g.campaign = create_default_campaign()
+    g.current_mission = g.campaign.start_next_mission()
+
+    # On garde des unités et bâtiments ennemis, mais on détruit le town_hall.
+    enemy_units_before = [u for u in g.units if u.faction == "enemy"]
+    assert enemy_units_before, "des unités ennemies doivent exister (bloquait l'ancienne victoire)"
+    g.buildings[:] = [b for b in g.buildings
+                      if not (b.faction == "enemy" and b.building_type == "town_hall")]
+
+    g._check_victory_defeat()
+    # Victoire -> avance à la mission 2 (même s'il restait des unités ennemies).
+    assert g.current_mission.mission_id == "mission_2"
+    assert g.state == "mission_screen"
+
+
+def test_avance_de_mission_purge_les_ennemis_survivants():
+    """Après victoire (base détruite), on ne doit pas cumuler les ennemis survivants
+    de l'ancienne mission avec la nouvelle base."""
+    from core.game import Game
+    from systems.campaign import create_default_campaign
+    g = Game()
+    g._apply_faction("human")
+    g.state = "playing"
+    g.campaign = create_default_campaign()
+    g.current_mission = g.campaign.start_next_mission()
+
+    # Conserver des unités ennemies + détruire la base
+    surviving = [u for u in g.units if u.faction == "enemy"]
+    assert len(surviving) > 0
+    g.buildings[:] = [b for b in g.buildings
+                      if not (b.faction == "enemy" and b.building_type == "town_hall")]
+    g._check_victory_defeat()
+
+    # La nouvelle base ennemie est recréée et propre : pas d'accumulation.
+    new_enemy = [u for u in g.units if u.faction == "enemy"]
+    for old in surviving:
+        assert old not in new_enemy, "les survivants de la mission précédente ne doivent plus être en jeu"
+
+
 def test_mission1_camp_ennemi_vient_de_la_config():
     """Nouvelle partie : le camp ennemi de mission 1 vient de enemy_config (3 guerriers)."""
     from core.game import Game

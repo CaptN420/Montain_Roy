@@ -1466,13 +1466,16 @@ class Game:
         """Vérifie la victoire/défaite et fait progresser la campagne.
 
         - Défaite : plus aucun bâtiment joueur.
-        - Victoire : tous les ennemis (unités + bâtiments) détruits.
-          Le camp ennemi est ensuite récréé pour la mission suivante, sinon
-          la nouvelle mission détecterait 0 ennemi et enchaînerait (cascade).
+        - Victoire : la BASE ennemie (tous les town_hall) est détruite.
+          L'IA ne reconstruit jamais de town_hall, donc un wipe total devient
+          réellement atteignable (l'ancienne condition sur "0 unités ET 0
+          bâtiments" restait inatteignable : l'IA re-produit/re-construit sans
+          cesse). Le camp ennemi est récréé pour la mission suivante.
         """
         player_buildings = [b for b in self.buildings if b.faction == "player"]
-        enemy_units = [u for u in self.units if u.faction == "enemy"]
-        enemy_buildings = [b for b in self.buildings if b.faction == "enemy"]
+        # Ce qui compte gagner : la base principale ennemie (town_hall).
+        enemy_townhalls = [b for b in self.buildings
+                           if b.faction == "enemy" and b.building_type == "town_hall"]
 
         # Échec par temps : si la mission impose un délai et qu'il est dépassé.
         limit = getattr(self.current_mission, "time_limit", 0) if self.current_mission else 0
@@ -1485,8 +1488,8 @@ class Game:
         if len(player_buildings) == 0:
             self.state = "defeat"
             return
-        elif len(enemy_units) == 0 and len(enemy_buildings) == 0:
-            # Victoire seulement si tous les ennemis ET bâtiments sont détruits
+        elif not enemy_townhalls:
+            # Victoire : la base ennemie est détruite.
             if self.current_mission:
                 self.current_mission.complete()
                 self.campaign.complete_current_mission()
@@ -1505,8 +1508,10 @@ class Game:
             else:
                 self.current_mission = self.campaign.start_next_mission()
                 if self.current_mission:
-                    # Recréer un camp ennemi pour la mission suivante afin
-                    # d'éviter une victoire en chaîne (0 ennemi restant).
+                    # Purger les ennemis survivants (la mission est gagnée) puis
+                    # recréer une base propre pour la mission suivante.
+                    self.units[:] = [u for u in self.units if u.faction != "enemy"]
+                    self.buildings[:] = [b for b in self.buildings if b.faction != "enemy"]
                     self.ai.initialize_enemy_base()
                     self.state = "mission_screen"
                 else:
