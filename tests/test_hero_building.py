@@ -152,6 +152,19 @@ def test_heros_roundtrip_to_dict_create_unit():
     assert len(restored.skills) == len(h.skills) == 4
 
 
+# ---------------------------------------------------------------- HUD
+def test_hud_affiche_panneau_invocation_heros_sans_crash():
+    g = _game()
+    hall = _select_hall(g)
+    # Panneau initial (aucun héros)
+    g.hud.draw_production_buttons(g.economy, g.selected_units, hall,
+                                  g.production_system, g.faction, g)
+    # Après avoir invoqué un héros (état "Présent")
+    g._summon_hero(0)
+    g.hud.draw_production_buttons(g.economy, g.selected_units, hall,
+                                  g.production_system, g.faction, g)
+
+
 def test_selected_hero_parmi_plusieurs():
     g = _game()
     _select_hall(g)

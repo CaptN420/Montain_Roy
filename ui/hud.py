@@ -169,11 +169,76 @@ class HUD:
         cam_h = int(self.screen.get_height() * map_scale)
         pygame.draw.rect(self.screen, (255, 255, 255), (cam_x, cam_y, cam_w, cam_h), 1)
 
+    _HERO_ROLE_NAMES = {"warrior": "Guerrier", "mage": "Mage", "archer": "Archer"}
+
+    def _draw_hero_summon_buttons(self, game=None):
+        """Panneau d'invocation des 3 héros de faction (bâtiment à héros sélectionné)."""
+        from entities.hero_types import HERO_ORDER, HERO_SUMMON_COSTS, faction_hero_types
+        if game is None or not getattr(game, "faction_id", None):
+            return
+        fid = game.faction_id
+        roles = list(HERO_ORDER)
+        types = faction_hero_types(fid)
+
+        # Héros joueur vivants sur le terrain (pas de doublon possible).
+        alive = set()
+        for u in getattr(game, "units", []):
+            if (getattr(u, "faction", "") == "player"
+                    and getattr(u, "unit_type", "").startswith("hero_")
+                    and getattr(u, "hp", 0) > 0):
+                alive.add(getattr(u, "unit_type", ""))
+
+        title = self.small_font.render("Héros (touches 1-3) :", True, (255, 215, 0))
+        self.screen.blit(title, (10, self.hud_y + 12))
+
+        start_x = 10
+        y = self.hud_y + 42
+        bw, bh = 112, 40
+        for i, role in enumerate(roles):
+            ut = types[i]
+            name = self._HERO_ROLE_NAMES.get(role, role)
+            cost = HERO_SUMMON_COSTS[role]
+            x = start_x + i * (bw + 6)
+
+            is_alive = ut in alive
+            affordable = (game.economy.gold >= cost["gold"]
+                          and game.economy.wood >= cost["wood"]
+                          and game.economy.food >= cost["food"])
+            if is_alive:
+                color = (60, 130, 70)
+            elif affordable:
+                color = (50, 150, 50)
+            else:
+                color = (100, 100, 100)
+
+            pygame.draw.rect(self.screen, color, (x, y, bw, bh))
+            pygame.draw.rect(self.screen, COLORS["ui_border"], (x, y, bw, bh), 1)
+
+            # Touche
+            self.screen.blit(self.button_font.render(str(i + 1), True, (255, 255, 255)),
+                             (x + 5, y + 4))
+            # Nom
+            self.screen.blit(self.small_font.render(name, True, (230, 230, 230)),
+                             (x + 5, y + 20))
+            # Coût (or / bois)
+            cost_line = f"{cost['gold']}o {cost['wood']}b"
+            self.screen.blit(self.small_font.render(cost_line, True, (200, 200, 200)),
+                             (x + 60, y + 4))
+            # Statut
+            status = "Présent" if is_alive else ("Invoquer" if affordable else "Manque or")
+            status_color = (180, 255, 180) if is_alive else ((180, 255, 180) if affordable else (255, 120, 120))
+            self.screen.blit(self.small_font.render(status, True, status_color),
+                             (x + 60, y + 20))
+
     def draw_production_buttons(self, economy, selected_units=None, selected_building=None,
                                 production_system=None, faction=None, game=None):
         """Dessine les boutons de production - alignés en bas, filtres par faction."""
         # Si un bâtiment est sélectionné, montrer ses options
         if selected_building:
+            # Bâtiment à héros : panneau d'invocation des 3 héros de faction.
+            if selected_building.building_type == "hero_hall":
+                self._draw_hero_summon_buttons(game)
+                return
             unit_names = None
             unlocked_units = None
             # Si le jeu + faction sont fournis, afficher les unités de ce bâtiment
