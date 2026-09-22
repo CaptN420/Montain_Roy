@@ -29,6 +29,8 @@ class SoundGenerator:
                 value = 1 if (i % (self.sample_rate // frequency)) < (self.sample_rate // (frequency * 2)) else -1
             elif wave_type == "sawtooth":
                 value = 2 * ((t * frequency) % 1) - 1
+            elif wave_type == "triangle":
+                value = 2 * abs(((t * frequency) % 1) - 0.5) - 1
             elif wave_type == "noise":
                 value = random.uniform(-1, 1)
             
@@ -117,7 +119,23 @@ class SoundGenerator:
     def generate_ui_click_sound(self) -> pygame.mixer.Sound:
         """Génère un son de clic UI."""
         return self._generate_wave(800, 0.05, "square", 0.1)
-
+    
+    def generate_select_sound(self) -> pygame.mixer.Sound:
+        """Génère un son de sélection d'unité."""
+        return self._generate_wave(600, 0.08, "sine", 0.15)
+    
+    def generate_move_sound(self) -> pygame.mixer.Sound:
+        """Génère un son de déplacement (ordre donné)."""
+        return self._generate_wave(400, 0.06, "triangle", 0.1)
+    
+    def generate_attack_sound(self) -> pygame.mixer.Sound:
+        """Génère un son d'attaque."""
+        return self._generate_wave(150, 0.12, "sawtooth", 0.2)
+    
+    def generate_retreat_sound(self) -> pygame.mixer.Sound:
+        """Génère un son de retraite."""
+        return self._generate_wave(300, 0.15, "sine", 0.15)
+    
     def generate_music_loop(self, duration: float = 8.0) -> pygame.mixer.Sound:
         """Génère une boucle musicale d'ambiance procédurale.
 
@@ -185,6 +203,10 @@ class AudioManager:
             "victory": self.generator.generate_victory_sound(),
             "defeat": self.generator.generate_defeat_sound(),
             "ui_click": self.generator.generate_ui_click_sound(),
+            "select": self.generator.generate_select_sound(),
+            "move": self.generator.generate_move_sound(),
+            "attack": self.generator.generate_attack_sound(),
+            "retreat": self.generator.generate_retreat_sound(),
             "skill": self.generator._generate_wave(800, 0.2, "sine", 0.2),
         }
     
@@ -290,3 +312,16 @@ class AudioEvents:
     def on_ui_click(self):
         """Appelé quand un bouton UI est cliqué."""
         self.audio.play("ui_click")
+    
+    def on_unit_selected(self):
+        """Appelé quand une unité est sélectionnée."""
+        self.audio.play("select")
+    
+    def on_order_given(self, order_type: str = "move"):
+        """Appelé quand un ordre est donné à une unité."""
+        if order_type == "attack":
+            self.audio.play("attack")
+        elif order_type == "retreat":
+            self.audio.play("retreat")
+        else:
+            self.audio.play("move")

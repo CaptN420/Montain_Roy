@@ -125,6 +125,8 @@ class EnemyAI:
         if self.state_timer > 3.0:
             self.state_timer = 0
             self._choose_state()
+            # Rappeler les unités blessées après changement d'état
+            self._retreat_low_hp_units()
 
         # Invoquer les héros ennemis dès qu'un bâtiment à héros est disponible
         self._manage_heroes()
@@ -353,6 +355,24 @@ class EnemyAI:
             self.state = "produce"
         else:
             self.state = random.choice(["produce", "build", "develop", "gather"])
+
+    def _retreat_low_hp_units(self):
+        """Rappel les unités blessées (< 30% PV) vers la base ennemie."""
+        combat = self._enemy_combat()
+        if not combat:
+            return
+        base = self._enemy_base_pos()
+        if base is None:
+            return
+        retreated = 0
+        for unit in combat[:]:
+            hp_ratio = getattr(unit, 'hp', unit.max_hp) / getattr(unit, 'max_hp', 100)
+            if hp_ratio < 0.3 and unit.target is None:
+                # Rappeler vers la base
+                self.game.movement_system.move_to(unit, base[0], base[1])
+                retreated += 1
+        if retreated > 0:
+            self.audio_events.on_order_given("retreat")
 
     def _player_raiding_resources(self):
         """True si des workers/builders joueur récoltent nos nodes de ressources.
