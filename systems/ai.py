@@ -60,21 +60,50 @@ class EnemyAI:
         }
     
     def _set_development_targets(self):
-        """Définit les cibles d'économie / armée / casernes / tours selon difficulté.
+        """Définit les cibles de base d'économie / armée / défense selon difficulté.
 
-        Agressivité : l'armée attaque dès ~parité (seuil bas) et garde une
-        garnison défensive. En hard, l'IA attaque plus tôt et plus souvent.
+        Ces cibles sont les BASES ; `_army_target()` et `_worker_target()`
+        les augmentent avec le temps de mission (escalade) pour que l'IA ne
+        plafonne jamais et continue de se développer face à un joueur qui
+        accumule des ressources/units.
         """
         d = self.difficulty
         targets = {
-            "easy":   {"workers": 6,  "army": 5,  "garrison": 2, "barracks": 1, "towers": 2},
-            "normal": {"workers": 8,  "army": 7,  "garrison": 2, "barracks": 2, "towers": 3},
-            "hard":   {"workers": 10, "army": 8,  "garrison": 3, "barracks": 3, "towers": 4},
+            "easy":   {"workers": 7,  "army": 6,  "garrison": 2, "barracks": 2, "towers": 3},
+            "normal": {"workers": 10, "army": 8,  "garrison": 3, "barracks": 3, "towers": 4},
+            "hard":   {"workers": 14, "army": 12, "garrison": 4, "barracks": 4, "towers": 6},
         }
         self.dev = targets.get(d, targets["normal"])
         # Temps entre chaque micro-décision de développement (plus rapide en hard).
         self.dev_interval = {"easy": 2.5, "normal": 2.0, "hard": 1.2}.get(d, 2.0)
         self._dev_timer = 0.0
+
+    def _mission_time(self):
+        """Temps écoulé de la mission (secondes). Retourne 0 hors jeu."""
+        return float(getattr(self.game, "mission_timer", 0) or 0)
+
+    def _army_target(self):
+        """Cible d'armée = base + escalade temporelle (armée +1 toutes les ~30s).
+
+        L'IA grossit au fil du jeu : contre un joueur qui amasse 50 workers,
+        elle finit par aligner une armée d'une taille comparable.
+        """
+        base = self.dev["army"]
+        growth = int(self._mission_time() / 30.0)
+        cap = None
+        if self.difficulty == "easy":
+            cap = 20
+        elif self.difficulty == "normal":
+            cap = 34
+        else:
+            cap = 50
+        return min(cap, base + growth)
+
+    def _worker_target(self):
+        """Cible de workers = base + escalade temporelle (worker +1 toutes les ~45s)."""
+        base = self.dev["workers"]
+        growth = int(self._mission_time() / 45.0)
+        return min(24, base + growth)
     
     def update(self, dt: float):
         """Met à jour l'IA (développement continu + état tactique périodique)."""
@@ -124,23 +153,43 @@ class EnemyAI:
     def _develop(self):
         """Une micro-décision de développement par tick.
 
-        Priorité : produire des workers (économie) -> construire des fermes
-        (suivre le cap de population) -> casernes supplémentaires (cadence de
-        production) -> tours défensives autour de la base.
+        Priorité : workers (économie scaling) -> armée (jusqu'à `_army_target()`)
+        -> fermes si la production d'unités est bloquée par le cap de population
+        -> casernes -> tours défensives.
         """
         ec = self.game.enemy_economy
 
-        # 1) Produire des workers jusqu'à la cible (économie en croissance).
-        if len(self._enemy_workers()) < self.dev["workers"]:
+        # 0) En dessous de la moitié des workers visés : pousser l'économie.
+        half_workers = self._worker_target() * 0.5
+        if len(self._enemy_workers()) < half_workers:
             self._produce_workers()
             return
 
-        # 2) Fermes pour lever le cap de population quand on en approche.
+        # 1) Armée : produire un combattant si on est sous la cible.
+        if len(self._enemy_combat()) < self._army_target():
+            produced = self._produce_units()
+            if produced:
+                return
+            # Si rien produit : cap de population atteint OU pas assez d'or.
+            # Construire une ferme pour lever le cap (débloque la production).
+            if ec.gold >= 150:
+                self._build_farms_as_needed()
+                return
+
+        # 2) Compléter les workers entre 50% et 100% de la cible.
+        if len(self._enemy_workers()) < self._worker_target():
+            self._produce_workers()
+            return
+
+        # 3) Construire fermes / casernes / tours.
         self._build_farms_as_needed()
-        # 3) Casernes supplémentaires (production plus rapide).
         self._build_extra_barracks()
-        # 4) Tours défensives autour de la base.
         self._build_towers()
+
+        # 4) Ressources excédentaires : accumuler de l'armée au-delà de la cible
+        #    pour exercer une pression continue sur le joueur.
+        if len(self._enemy_combat()) < self._army_target() + 6:
+            self._produce_units()
 
     def _produce_workers(self):
         """Produit un worker ennemi depuis le town hall si les ressources le permettent."""
@@ -205,11 +254,17 @@ class EnemyAI:
         return False
 
     def _build_farms_as_needed(self):
-        """Construit des fermes pour lever le cap de population."""
+        """Construit des fermes pour que le cap de population couvre la cible.
+
+        Au lieu d'attendre d'être à 80% du cap (ce qui bloquait l'IA), elle
+        construit des fermes en AVANCE pour que max_pop >= workers + armée +
+        marge. Nécessaire pour que l'armée puisse grossir avec l'escalade.
+        """
         max_pop = self.game.economy.get_max_population(self._enemy_buildings())
-        pop = self._enemy_pop()
-        # Si on approche (>=80%) du cap, agrandir avant que la production se bloque.
-        if pop >= max_pop * 0.8:
+        needed = self._worker_target() + self._army_target() + 6
+        # Trop de fermes coûtent cher : ajouter mais rester raisonnable.
+        needed = min(needed, 70)
+        if max_pop < needed:
             self._try_place("farm", Farm)
 
     def _build_extra_barracks(self):
@@ -263,18 +318,24 @@ class EnemyAI:
         enemy_count = len(enemy_combat)
         player_count = len(player_combat)
 
-        atk_target = self.dev["army"]
+        atk_target = self._army_target()
         # Agressivité : seuil d'attaque = ~2/3 de la cible (attaquer plus tôt)
         # en difficulté normale/difficile ; en facile on attend la cible pleine.
         aggr_threshold = atk_target
         if self.difficulty in ("normal", "hard"):
             aggr_threshold = max(3, int(atk_target * 0.66))
 
+        # Le joueur épuise-t-il nos ressources (raiders de workers) ? Si oui,
+        # défendre pour les chasser — sinon il draine toutes les mines/forêts.
+        if self._player_raiding_resources():
+            self.state = "defend"
+            return
+
         # L'armée atteint son seuil -> attaquer (proactif, même à parité). Un
         # état "defend" actif reste prioritaire (le joueur assiège la base).
         if self.state != "defend" and enemy_count >= aggr_threshold:
             self.state = "attack"
-        elif len(self._enemy_workers()) < self.dev["workers"] and enemy_count < atk_target:
+        elif len(self._enemy_workers()) < self._worker_target() and enemy_count < atk_target:
             self.state = random.choice(["develop", "gather"])
             return
         elif player_count > enemy_count * 1.5:
@@ -287,6 +348,30 @@ class EnemyAI:
             self.state = "produce"
         else:
             self.state = random.choice(["produce", "build", "develop", "gather"])
+
+    def _player_raiding_resources(self):
+        """True si des workers/builders joueur récoltent nos nodes de ressources.
+
+        Un node appartient de fait à l'ennemi quand il est proche de sa base.
+        Si le joueur envoie ses récolteurs dessus, il les draine : l'IA doit
+        réagir (défendre) plutôt que de continuer à attaquer/produire.
+        """
+        base = self._enemy_base_pos()
+        if base is None:
+            return False
+        bx, by = base
+        # Nodes proches de la base ennemie = ressource à protéger.
+        nearby = [n for n in getattr(self.game, "resource_nodes", [])
+                  if not getattr(n, "is_depleted", lambda: False)()
+                  and ((n.x - bx) ** 2 + (n.y - by) ** 2) ** 0.5 < 600]
+        if not nearby:
+            return False
+        nset = set(id(n) for n in nearby)
+        for u in self.game.units:
+            if u.faction == "player" and getattr(u, "unit_type", "") in ("worker", "builder"):
+                if getattr(u, "target_resource", None) is not None and id(u.target_resource) in nset:
+                    return True
+        return False
     
     def _gather_resources(self, dt: float):
         """Fait récolter les unités de récolte ennemies (workers/builders)."""
@@ -391,13 +476,17 @@ class EnemyAI:
                 ec.food -= cost["food"]
                 return  # un héros par tick
     
-    def _produce_units(self):
-        """Produit des unités (paye les vraies ressources ennemies)."""
+    def _produce_units(self) -> bool:
+        """Produit des unités (paye les vraies ressources ennemies).
+
+        Retourne True si une unité a été produite (utile pour savoir si le
+        dev doit construire une ferme ensuite), sinon False.
+        """
         # Trouver une caserne ennemie
         barracks = [b for b in self.game.buildings if b.building_type == "barracks" and b.faction == "enemy"]
         
         if not barracks:
-            return
+            return False
 
         ec = self.game.enemy_economy
 
@@ -406,11 +495,9 @@ class EnemyAI:
         max_pop = self.game.economy.get_max_population(enemy_buildings)
         pop = len([u for u in self.game.units if u.faction == "enemy"])
         if pop >= max_pop:
-            return
+            return False
 
         # Préférer l'unité de combat la plus chère abordable ; sinon descendre.
-        # (l'ancien code `random.choice` abandonnait toute production si le
-        #  coût tiré était inabordable, même quand un guerrier passait)
         unit_types = ["knight", "mage", "archer", "warrior"]
         for unit_type in unit_types:
             cost = self.unit_costs.get(unit_type)
@@ -427,8 +514,9 @@ class EnemyAI:
                 ec.gold -= cost["gold"]
                 ec.wood -= cost["wood"]
                 ec.food -= cost["food"]
-                return
+                return True
         # Aucune unité abordable : on ne produit rien (économie intacte).
+        return False
     
     def _attack_player(self):
         """Attaque le joueur de façon TACTIQUE (jamais les workers).

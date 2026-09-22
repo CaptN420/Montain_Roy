@@ -130,11 +130,53 @@ def test_construit_des_fermes_pour_lever_pop():
 
 def test_n_ajoute_pas_de_ferme_si_pop_confortable():
     game = _game(workers=4, farms=3)  # cap 25, pop 4 -> pas besoin
+    game.mission_timer = 0.0
     ai = EnemyAI(game)
     farms_before = len([b for b in game.buildings if b.building_type == "farm"])
     ai._build_farms_as_needed()
     farms_after = len([b for b in game.buildings if b.building_type == "farm"])
     assert farms_after == farms_before
+
+
+def test_construit_fermes_proactivement_selon_cible():
+    # Avec l'escalade, la cible peut demander un cap élevé -> fermes en avance.
+    game = _game(workers=8, farms=3, gold=5000, wood=5000)
+    game.mission_timer = 600.0  # armée cible élevée
+    ai = EnemyAI(game)
+    # Cible (normal, 10 min) : workers 10+6=16, army 8+20=28 -> besoin cap >=50
+    assert ai._army_target() >= 20
+    ai._build_farms_as_needed()
+    farms = len([b for b in game.buildings if b.building_type == "farm"])
+    assert farms > 3, "l'IA doit ajouter des fermes pour couvrir sa cible d'armée"
+
+
+def test_defend_chasse_les_raiders_de_ressources():
+    # Un worker joueur qui récolte un node proche de la base ennemie = raider.
+    node = SimpleNamespace(x=400, y=300, is_depleted=lambda: False)  # <600 de (0,0)
+    player_worker = _w(410, 310, "player")
+    player_worker.unit_type = "worker"
+    player_worker.target_resource = node
+    game = _game(workers=4, combat_units=3)
+    game.resource_nodes = [node]
+    game.units += [player_worker]
+    ai = EnemyAI(game)
+    assert ai._player_raiding_resources(), "un worker joueur sur un node proche = raider"
+    ai.state = "gather"
+    ai._choose_state()
+    assert ai.state == "defend", "l'IA doit défendre pour chasser le raider"
+
+
+def test_ignore_worker_joueur_recoltant_loin():
+    # Un worker joueur qui récolte un node LOIN de la base n'est pas une menace.
+    node = SimpleNamespace(x=5000, y=5000, is_depleted=lambda: False)
+    player_worker = _w(5010, 5010, "player")
+    player_worker.unit_type = "worker"
+    player_worker.target_resource = node
+    game = _game()
+    game.resource_nodes = [node]
+    game.units += [player_worker]
+    ai = EnemyAI(game)
+    assert not ai._player_raiding_resources(), "node loin de la base = pas un raid ennemi"
 
 
 def test_construit_casernes_supplementaires():
@@ -181,15 +223,34 @@ def test_attack_proactive_sans_dominer():
 
 
 def test_attaque_agressive_des_23_de_la_cible():
-    # Normal : seuil agressif = ~2/3 (max(3, int(7*0.66)=4)). 5 unités -> attaquer.
+    # Normal : seuil agressif = ~2/3 (max(3, int(8*0.66)=5)). 5 unités -> attaquer.
     game = _game(workers=8, combat_units=5)
     players = [Unit(i, 500, "player") for i in range(5)]
     game.units += players
-    ai = EnemyAI(game)  # difficulty normal -> army 7, seuil 4
-    assert ai.dev["army"] == 7
+    ai = EnemyAI(game)  # difficulty normal -> army base 8, seuil 5
+    assert ai.dev["army"] == 8
     ai.state = "gather"
     ai._choose_state()
     assert ai.state == "attack", "seuil agressif (2/3) déclenché avec 5 unités"
+
+
+def test_escalade_armee_avec_le_temps():
+    # La cible d'armée grossit avec le temps de mission (escalade).
+    game = _game()
+    ai = EnemyAI(game)  # normal, base army 8
+    assert ai._army_target() == 8  # t=0
+    game.mission_timer = 360.0  # 6 min -> +12 => 20 (plafonné normal à 34)
+    assert ai._army_target() == 20
+    game.mission_timer = 1200.0  # 20 min -> atteint le plafond
+    assert ai._army_target() == 34
+
+
+def test_escalade_workers_avec_le_temps():
+    game = _game()
+    ai = EnemyAI(game)  # normal base workers 10
+    assert ai._worker_target() == 10
+    game.mission_timer = 360.0  # 6 min -> +8 => 18
+    assert ai._worker_target() == 18
 
 
 # --------------------------------------------------------------- tactique
@@ -264,17 +325,23 @@ def test_attaque_garde_une_garnison_en_defense():
 
 
 def test_develop_produit_workers_puis_construit():
-    game = _game(workers=4, gold=5000, wood=5000, food=5000, farms=0)
+    # workers sous la moitié de la cible -> produire un worker.
+    game = _game(workers=2, gold=5000, wood=5000, food=5000, farms=0)
+    game.mission_timer = 0.0
     ai = EnemyAI(game)
     ai.dev["workers"] = 8
     ai._develop()
-    # Premier appel : il reste < 8 workers -> produit un worker
     workers = sum(1 for u in game.units if u.unit_type == "worker")
-    assert workers == 5
-    # Une fois les workers au max, il passe à la construction
+    assert workers == 3, "sous la moitié de la cible, on produit un worker"
+
+    # Une fois la moitié atteinte, on produit de l'armée puis on construit.
     game2 = _game(workers=8, gold=5000, wood=5000, food=5000, farms=0)
+    game2.mission_timer = 0.0
     ai2 = EnemyAI(game2)
     ai2.dev["workers"] = 8
+    combat_before = len([u for u in game2.units
+                         if getattr(u, "unit_type", "") not in ("worker", "builder")])
     ai2._develop()
-    assert any(b.building_type == "farm" for b in game2.buildings), \
-        "workers comblés -> la prochaine étape est de construire une ferme"
+    combat_after = len([u for u in game2.units
+                        if getattr(u, "unit_type", "") not in ("worker", "builder")])
+    assert combat_after >= combat_before, "workers au niveau -> produit de l'armée"
