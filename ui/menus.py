@@ -33,12 +33,13 @@ class MainMenu:
     """Menu principal du jeu."""
 
     def __init__(self):
-        # Center vertically: total height = 4*50 + 3*10 = 230, start at center - 115
+        # Center vertically: 5*50 + 4*10 = 290, start at center - 145
         self.buttons = [
-            MenuButton("Nouvelle Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 115),
-            MenuButton("Charger une Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 55),
-            MenuButton("Options", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 5),
-            MenuButton("Quitter", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 65),
+            MenuButton("Nouvelle Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 135),
+            MenuButton("Mode Libre", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 75),
+            MenuButton("Charger une Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 15),
+            MenuButton("Options", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 45),
+            MenuButton("Quitter", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 105),
         ]
     
     def draw(self, screen):
@@ -48,13 +49,13 @@ class MainMenu:
         # Titre
         title_font = pygame.font.Font(None, 72)
         title = title_font.render("Mountain_Roy", True, (255, 215, 0))
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 - 20))
         screen.blit(title, title_rect)
         
         # Sous-titre
         subtitle_font = pygame.font.Font(None, 24)
         subtitle = subtitle_font.render("RTS Fantasy - 4 Factions", True, (200, 200, 200))
-        subtitle_rect = subtitle.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 50))
+        subtitle_rect = subtitle.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 30))
         screen.blit(subtitle, subtitle_rect)
         
         # Boutons
@@ -69,6 +70,8 @@ class MainMenu:
                 if button.is_clicked(pos):
                     if button.text == "Nouvelle Partie":
                         return "new_game"
+                    elif button.text == "Mode Libre":
+                        return "sandbox"
                     elif button.text == "Charger une Partie":
                         return "load_game"
                     elif button.text == "Options":

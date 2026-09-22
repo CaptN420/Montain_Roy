@@ -55,6 +55,8 @@ class Game:
         self.faction_id = "human"  # Faction choisie par le joueur (défaut humain)
         self.faction = None        # Objet Faction (sera appliqué au démarrage)
         self.difficulty = "normal"  # easy / normal / hard
+        self.sandbox = False       # True en mode libre (pas d'IA, pas de victoire/défaite)
+        self._sandbox_pending = False
         
         # Economy
         self.economy = EconomySystem()
@@ -415,6 +417,11 @@ class Game:
                 action = self.main_menu.handle_event(event)
                 if action == "new_game":
                     # Aller au choix de faction d'abord
+                    self._sandbox_pending = False
+                    self.state = "faction_select"
+                elif action == "sandbox":
+                    # Mode libre : on choisit sa faction puis on joue librement.
+                    self._sandbox_pending = True
                     self.state = "faction_select"
                 elif action == "load_game":
                     self._show_load_menu()
@@ -424,11 +431,16 @@ class Game:
             elif self.state == "faction_select":
                 action = self.faction_menu.handle_event(event)
                 if action == "back":
+                    self._sandbox_pending = False
                     self.state = "menu"
                 elif action and action in get_factions():
                     self.faction_id = action
-                    # Aller au choix de difficulté avant de lancer la campagne
-                    self.state = "difficulty_select"
+                    if self._sandbox_pending:
+                        self._sandbox_pending = False
+                        self._start_sandbox()
+                    else:
+                        # Campagne : aller au choix de difficulté
+                        self.state = "difficulty_select"
             
             elif self.state == "difficulty_select":
                 action = self.difficulty_menu.handle_event(event)
@@ -705,6 +717,32 @@ class Game:
                     # Fermer le menu mais rester en mode placement
                     self.build_menu_open = False
                     return
+
+    def _start_sandbox(self):
+        """Démarre le mode libre (sandbox) avec la faction choisie.
+
+        Carte ouverte : base joueur seule (sans ennemi), ressources de départ
+        généreuses, IA désactivée, et pas de victoire/défaite. Le joueur
+        construit, produit et explore librement pour tester sa faction.
+        """
+        self.sandbox = True
+        self.current_mission = None
+        self._apply_faction(self.faction_id)
+        # Ressources de départ généreuses pour bâtir vite.
+        self.economy.gold = 800
+        self.economy.wood = 600
+        self.economy.food = 300
+        # Purger toute entité ennemie : le joueur est seul sur la carte.
+        # Mutation SUR PLACE (ne pas rebinder) : les systèmes référencent ces listes.
+        self.units[:] = [u for u in self.units if u.faction != "enemy"]
+        self.buildings[:] = [b for b in self.buildings if b.faction != "enemy"]
+        self.construction_system.construction_sites[:] = [
+            s for s in self.construction_system.construction_sites if s.faction != "enemy"]
+        self.selected_units[:] = [u for u in self.selected_units if u.faction == "player"]
+        # L'IA ne joue pas en mode libre.
+        self.ai.state = "idle"
+        self._show_ui_message("Mode libre : construis et explore sans limites !", (130, 220, 130), 5.0)
+        self.state = "playing"
 
     def _start_campaign(self):
         """Démarre la campagne avec la faction choisie."""
@@ -1415,8 +1453,9 @@ class Game:
         # Mettre à jour le brouillard de guerre
         self.fog_of_war.update(self.units, self.buildings)
         
-        # Mettre à jour l'IA
-        self.ai.update(dt)
+        # Mettre à jour l'IA (sauf en mode libre : pas d'adversaire)
+        if not self.sandbox:
+            self.ai.update(dt)
         
         # Mettre à jour les unités
         for unit in self.units[:]:
@@ -1519,15 +1558,11 @@ class Game:
         self._check_victory_defeat()
     
     def _check_victory_defeat(self):
-        """Vérifie la victoire/défaite et fait progresser la campagne.
+        """Vérifie la victoire/défaite et fait progresser la campagne."""
+        # Mode libre : pas de victoire/défaite (le joueur joue sans but précis).
+        if getattr(self, "sandbox", False):
+            return
 
-        - Défaite : plus aucun bâtiment joueur.
-        - Victoire : la BASE ennemie (tous les town_hall) est détruite.
-          L'IA ne reconstruit jamais de town_hall, donc un wipe total devient
-          réellement atteignable (l'ancienne condition sur "0 unités ET 0
-          bâtiments" restait inatteignable : l'IA re-produit/re-construit sans
-          cesse). Le camp ennemi est récréé pour la mission suivante.
-        """
         player_buildings = [b for b in self.buildings if b.faction == "player"]
         # Ce qui compte gagner : la base principale ennemie (town_hall).
         enemy_townhalls = [b for b in self.buildings
