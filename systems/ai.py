@@ -31,12 +31,15 @@ class EnemyAI:
         self.difficulty = "normal"  # easy, normal, hard
         
         # États de l'IA
-        self.state = "gather"  # gather, build, produce, attack, defend
+        self.state = "gather"  # gather, develop, build, produce, attack, defend
         self.state_timer = 0
         
         # Cibles
         self.target_base = None
         self.attack_group = []
+        
+        # Développement : cibles d'économie / armée / défense selon difficulté.
+        self._set_development_targets()
         
         # L'IA utilise maintenant les vraies ressources du jeu
         # Plus de ressources virtuelles isolées
@@ -53,23 +56,46 @@ class EnemyAI:
             "barracks": {"gold": 150, "wood": 100, "food": 20},
             "tower": {"gold": 100, "wood": 100, "food": 10},
             "hero_hall": {"gold": 180, "wood": 120, "food": 40},
+            "farm": {"gold": 50, "wood": 100, "food": 0},
         }
     
+    def _set_development_targets(self):
+        """Définit les cibles d'économie / armée / casernes / tours selon difficulté."""
+        d = self.difficulty
+        targets = {
+            "easy":   {"workers": 6,  "army": 6,  "barracks": 1, "towers": 2, "farm_mult": 1},
+            "normal": {"workers": 8,  "army": 10, "barracks": 2, "towers": 3, "farm_mult": 1},
+            "hard":   {"workers": 11, "army": 14, "barracks": 3, "towers": 4, "farm_mult": 1},
+        }
+        self.dev = targets.get(d, targets["normal"])
+        # Temps entre chaque micro-décision de développement (plus rapide en hard).
+        self.dev_interval = {"easy": 2.5, "normal": 2.0, "hard": 1.2}.get(d, 2.0)
+        self._dev_timer = 0.0
+    
     def update(self, dt: float):
-        """Met à jour l'IA."""
+        """Met à jour l'IA (développement continu + état tactique périodique)."""
         self.state_timer += dt
-        
-        # Changer d'état périodiquement
-        if self.state_timer > 5.0:
+
+        # Développement CONTINU : produire des workers et construire selon une
+        # cadence rapide, indépendamment de l'état tactique choisi.
+        self._dev_timer += dt
+        if self._dev_timer >= self.dev_interval:
+            self._dev_timer = 0.0
+            self._develop()
+
+        # Changer d'état tactique périodiquement
+        if self.state_timer > 3.0:
             self.state_timer = 0
             self._choose_state()
-        
+
         # Invoquer les héros ennemis dès qu'un bâtiment à héros est disponible
         self._manage_heroes()
-        
+
         # Exécuter l'état actuel
         if self.state == "gather":
             self._gather_resources(dt)
+        elif self.state == "develop":
+            self._produce_workers()
         elif self.state == "build":
             self._build_structures()
         elif self.state == "produce":
@@ -78,6 +104,121 @@ class EnemyAI:
             self._attack_player()
         elif self.state == "defend":
             self._defend_base()
+
+    # ------------------------------------------------------------------
+    # Développement continu — l'IA fait grossir son économie et sa base.
+    # ------------------------------------------------------------------
+    def _enemy_buildings(self, btype=None):
+        bs = [b for b in self.game.buildings if getattr(b, "faction", "") == "enemy"]
+        if btype:
+            return [b for b in bs if b.building_type == btype]
+        return bs
+
+    def _enemy_pop(self):
+        return len([u for u in self.game.units if u.faction == "enemy"])
+
+    def _develop(self):
+        """Une micro-décision de développement par tick.
+
+        Priorité : produire des workers (économie) -> construire des fermes
+        (suivre le cap de population) -> casernes supplémentaires (cadence de
+        production) -> tours défensives autour de la base.
+        """
+        ec = self.game.enemy_economy
+
+        # 1) Produire des workers jusqu'à la cible (économie en croissance).
+        if len(self._enemy_workers()) < self.dev["workers"]:
+            self._produce_workers()
+            return
+
+        # 2) Fermes pour lever le cap de population quand on en approche.
+        self._build_farms_as_needed()
+        # 3) Casernes supplémentaires (production plus rapide).
+        self._build_extra_barracks()
+        # 4) Tours défensives autour de la base.
+        self._build_towers()
+
+    def _produce_workers(self):
+        """Produit un worker ennemi depuis le town hall si les ressources le permettent."""
+        # Un worker par tick max (production limitée par l'économie).
+        ec = self.game.enemy_economy
+        townhalls = self._enemy_buildings("town_hall")
+        if not townhalls:
+            return
+        hall = townhalls[0]
+        cost = {"gold": 30, "wood": 15, "food": 5}
+        if not (ec.gold >= cost["gold"] and ec.wood >= cost["wood"] and ec.food >= cost["food"]):
+            return
+        # Garder une réserve pour la production d'unités.
+        if ec.gold < 120:
+            return
+        # Ne pas dépasser le cap de population (les fermes l'augmentent).
+        if self._enemy_pop() >= self.game.economy.get_max_population(self._enemy_buildings()):
+            return
+        worker = create_unit("worker", hall.x + 40, hall.y + 60, "enemy")
+        worker.game = self.game  # nécessaire pour la récolte/dépôt
+        self.game.units.append(worker)
+        ec.gold -= cost["gold"]
+        ec.wood -= cost["wood"]
+        ec.food -= cost["food"]
+
+    def _can_afford(self, cost) -> bool:
+        ec = self.game.enemy_economy
+        return (ec.gold >= cost.get("gold", 0) and ec.wood >= cost.get("wood", 0)
+                and ec.food >= cost.get("food", 0))
+
+    def _try_place(self, btype, building_cls, max_jitter=5):
+        """Place un bâtiment ennemi près d'un bâtiment existant si possible.
+
+        Retourne True si placé (bâtiment ajouté + coût débité).
+        """
+        ec = self.game.enemy_economy
+        cost = self.building_costs.get(btype)
+        if cost is None or not self._can_afford(cost):
+            return False
+        # Base pour le placement : le town hall si présent, sinon n'importe quel bâtiment.
+        base = None
+        th = self._enemy_buildings("town_hall")
+        if th:
+            base = th[0]
+        elif self._enemy_buildings():
+            base = self._enemy_buildings()[0]
+        if base is None:
+            return False
+        for _ in range(max_jitter):
+            ox = random.choice([-90, -60, 60, 90, 0, 120])
+            oy = random.choice([-90, -60, 60, 90, 0, 120])
+            new_x, new_y = base.x + ox, base.y + oy
+            ok, _ = self.game.construction_system.validate_build_position(btype, new_x, new_y)
+            if not ok:
+                continue
+            nb = building_cls(new_x, new_y, "enemy")
+            self.game.buildings.append(nb)
+            ec.gold -= cost.get("gold", 0)
+            ec.wood -= cost.get("wood", 0)
+            ec.food -= cost.get("food", 0)
+            return True
+        return False
+
+    def _build_farms_as_needed(self):
+        """Construit des fermes pour lever le cap de population."""
+        max_pop = self.game.economy.get_max_population(self._enemy_buildings())
+        pop = self._enemy_pop()
+        # Si on approche (>=80%) du cap, agrandir avant que la production se bloque.
+        if pop >= max_pop * 0.8:
+            self._try_place("farm", Farm)
+
+    def _build_extra_barracks(self):
+        """Construit des casernes supplémentaires pour produire plus vite."""
+        barracks_count = len(self._enemy_buildings("barracks"))
+        if barracks_count < self.dev["barracks"]:
+            self._try_place("barracks", Barracks)
+
+    def _build_towers(self):
+        """Construit des tours défensives autour de la base."""
+        towers = len(self._enemy_buildings("tower"))
+        if towers < self.dev["towers"] and len(self._enemy_combat()) >= 2:
+            self._try_place("tower", Tower)
     
     # ------------------------------------------------------------------
     # Filtres de population ennemie — évite de confondre récolte et combat.
@@ -103,20 +244,40 @@ class EnemyAI:
             attacker.target = target
 
     def _choose_state(self):
-        """Choisit l'état suivant."""
-        # Compter les unités ennemies
-        enemy_count = len([u for u in self.game.units if u.faction == "enemy"])
-        player_count = len([u for u in self.game.units if u.faction == "player"])
-        
-        # Déterminer l'état basé sur la situation
-        if enemy_count < 3:
-            self.state = "produce"
-        elif enemy_count > player_count * 1.5:
-            self.state = "attack"   # l'IA domine : pousser l'avantage
+        """Choisit l'état tactique suivant (proactif, dépend de la difficulté).
+
+        L'IA ne reste plus passive : elle développe son économie au début,
+        produit une armée, puis ATTAQUE dès qu'elle atteint sa cible d'armée —
+        même si elle n'est pas numériquement supérieure au joueur. Elle défend
+        quand le joueur la domine fortement.
+        """
+        enemy_combat = self._enemy_combat()
+        player_combat = [u for u in self.game.units
+                         if u.faction == "player"
+                         and getattr(u, "unit_type", "") not in ("worker", "builder")
+                         and getattr(u, "hp", 1) > 0]
+        enemy_count = len(enemy_combat)
+        player_count = len(player_combat)
+
+        atk_target = self.dev["army"]
+        # En début de partie : développer l'économie + produire une armée.
+        if len(self._enemy_workers()) < self.dev["workers"] and enemy_count < atk_target:
+            self.state = random.choice(["develop", "gather"])
+            return
+
+        # L'armée atteint sa cible -> attaquer (proactif, même à parité).
+        if self.state != "defend" and enemy_count >= atk_target:
+            self.state = "attack"
         elif player_count > enemy_count * 1.5:
-            self.state = "defend"   # le joueur domine : protéger la base
+            # Le joueur domine largement -> protéger la base + reconstruire.
+            self.state = "defend"
+        elif enemy_count < atk_target * 0.5:
+            self.state = "produce"
+        elif self.state == "attack":
+            # En pleine attaque mais moins de combat que la cible : refaire le plein.
+            self.state = "produce"
         else:
-            self.state = random.choice(["gather", "build", "produce"])
+            self.state = random.choice(["produce", "build", "develop", "gather"])
     
     def _gather_resources(self, dt: float):
         """Fait récolter les unités de récolte ennemies (workers/builders)."""
