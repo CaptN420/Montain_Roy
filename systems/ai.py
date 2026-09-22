@@ -60,12 +60,16 @@ class EnemyAI:
         }
     
     def _set_development_targets(self):
-        """Définit les cibles d'économie / armée / casernes / tours selon difficulté."""
+        """Définit les cibles d'économie / armée / casernes / tours selon difficulté.
+
+        Agressivité : l'armée attaque dès ~parité (seuil bas) et garde une
+        garnison défensive. En hard, l'IA attaque plus tôt et plus souvent.
+        """
         d = self.difficulty
         targets = {
-            "easy":   {"workers": 6,  "army": 6,  "barracks": 1, "towers": 2, "farm_mult": 1},
-            "normal": {"workers": 8,  "army": 10, "barracks": 2, "towers": 3, "farm_mult": 1},
-            "hard":   {"workers": 11, "army": 14, "barracks": 3, "towers": 4, "farm_mult": 1},
+            "easy":   {"workers": 6,  "army": 5,  "garrison": 2, "barracks": 1, "towers": 2},
+            "normal": {"workers": 8,  "army": 7,  "garrison": 2, "barracks": 2, "towers": 3},
+            "hard":   {"workers": 10, "army": 8,  "garrison": 3, "barracks": 3, "towers": 4},
         }
         self.dev = targets.get(d, targets["normal"])
         # Temps entre chaque micro-décision de développement (plus rapide en hard).
@@ -260,14 +264,19 @@ class EnemyAI:
         player_count = len(player_combat)
 
         atk_target = self.dev["army"]
-        # En début de partie : développer l'économie + produire une armée.
-        if len(self._enemy_workers()) < self.dev["workers"] and enemy_count < atk_target:
+        # Agressivité : seuil d'attaque = ~2/3 de la cible (attaquer plus tôt)
+        # en difficulté normale/difficile ; en facile on attend la cible pleine.
+        aggr_threshold = atk_target
+        if self.difficulty in ("normal", "hard"):
+            aggr_threshold = max(3, int(atk_target * 0.66))
+
+        # L'armée atteint son seuil -> attaquer (proactif, même à parité). Un
+        # état "defend" actif reste prioritaire (le joueur assiège la base).
+        if self.state != "defend" and enemy_count >= aggr_threshold:
+            self.state = "attack"
+        elif len(self._enemy_workers()) < self.dev["workers"] and enemy_count < atk_target:
             self.state = random.choice(["develop", "gather"])
             return
-
-        # L'armée atteint sa cible -> attaquer (proactif, même à parité).
-        if self.state != "defend" and enemy_count >= atk_target:
-            self.state = "attack"
         elif player_count > enemy_count * 1.5:
             # Le joueur domine largement -> protéger la base + reconstruire.
             self.state = "defend"
@@ -422,36 +431,89 @@ class EnemyAI:
         # Aucune unité abordable : on ne produit rien (économie intacte).
     
     def _attack_player(self):
-        """Attaque le joueur avec les unités de combat ennemies (jamais les workers)."""
-        # Trouver les unités de combat ennemies
+        """Attaque le joueur de façon TACTIQUE (jamais les workers).
+
+        - Choisit UNE cible stratégique pour toute l'armée (bâtiment de
+          production joueur prioritaire, sinon hôtel de ville, sinon unités).
+        - Concentre l'armée dessus au lieu d'éparpiller chaque unité sur la
+          cible la plus proche.
+        - Garde une petite garnison en défense de la base pendant l'attaque.
+        """
         enemy_units = self._enemy_combat()
-        
         if not enemy_units:
             return
-        
-        # Trouver une cible (unité ou bâtiment joueur)
-        targets = [u for u in self.game.units if u.faction == "player"]
-        targets += [b for b in self.game.buildings if b.faction == "player"]
-        
-        if not targets:
+
+        # Cible stratégique commune pour la concentration.
+        target = self._strategic_player_target()
+        if target is None:
             return
-        
-        # Attaquer la cible la plus proche
-        for unit in enemy_units:
-            closest_target = None
-            min_distance = float('inf')
-            
-            for target in targets:
-                dx = target.x - unit.x
-                dy = target.y - unit.y
-                distance = (dx ** 2 + dy ** 2) ** 0.5
-                
-                if distance < min_distance:
-                    min_distance = distance
-                    closest_target = target
-            
-            if closest_target:
-                self._order_attack(unit, closest_target)
+
+        # Le gros de l'armée attaque la cible stratégique.
+        assault = enemy_units[:]
+        garrison_size = self.dev.get("garrison", 2)
+        if len(assault) > garrison_size:
+            # Les unités déjà proches de la base défendent plutôt.
+            base = self._enemy_base_pos()
+            if base is not None:
+                proximity = sorted(enemy_units,
+                                   key=lambda u: ((u.x - base[0]) ** 2 + (u.y - base[1]) ** 2) ** 0.5)
+                garrison = proximity[:garrison_size]
+                assault = [u for u in enemy_units if u not in garrison]
+                # La garnison ne part pas au combat.
+                for g in garrison:
+                    if g.target is None:
+                        g.target = None  # reste en place (défense passive)
+            if not assault:
+                assault = enemy_units[garrison_size:]
+
+        for unit in assault:
+            self._order_attack(unit, target)
+
+    def _enemy_base_pos(self):
+        th = self._enemy_buildings("town_hall")
+        if th:
+            return (th[0].x, th[0].y)
+        if self._enemy_buildings():
+            b = self._enemy_buildings()[0]
+            return (b.x, b.y)
+        return None
+
+    def _strategic_player_target(self):
+        """Choisit la cible stratégique la plus précieuse du joueur.
+
+        Priorité : bâtiments de production -> hôtel de ville -> unité ennemie
+        la plus proche de l'armée. Toujours affecter l'armée sur une cible
+        commune (concentration de force).
+        """
+        PROD = ("barracks", "workshop", "human_barracks", "orc_war_hut",
+                "elf_ranger_lodge", "dwarf_forge", "academy", "dock")
+        # 1) Bâtiment de production joueur, le plus proche de l'armée ennemie.
+        prod = [b for b in self.game.buildings
+                if b.faction == "player" and b.building_type in PROD]
+        if prod:
+            return min(prod, key=lambda b: self._dist_to_army(b.x, b.y))
+        # 2) Hôtel de ville joueur (coup dur).
+        th = [b for b in self.game.buildings
+              if b.faction == "player" and b.building_type == "town_hall"]
+        if th:
+            return min(th, key=lambda b: self._dist_to_army(b.x, b.y))
+        # 3) Sinon le premier bâtiment joueur atteignable.
+        pb = [b for b in self.game.buildings if b.faction == "player"]
+        if pb:
+            return min(pb, key=lambda b: self._dist_to_army(b.x, b.y))
+        # 4) En dernier recours : l'unité joueur la plus proche de l'armée.
+        players = [u for u in self.game.units if u.faction == "player"]
+        if players:
+            return min(players, key=lambda u: self._dist_to_army(u.x, u.y))
+        return None
+
+    def _dist_to_army(self, x, y):
+        """Distance entre un point et la première unité de combat ennemie."""
+        combat = self._enemy_combat()
+        if not combat:
+            return float('inf')
+        anchor = combat[0]
+        return ((x - anchor.x) ** 2 + (y - anchor.y) ** 2) ** 0.5
     
     def _defend_base(self):
         """Défend la base ET les nodes de ressources ennemis des menaces joueur.
