@@ -9,25 +9,29 @@ from settings import COLORS
 
 class Building:
     """Classe de base pour les bâtiments."""
-    
+
     def __init__(self, x: int, y: int, faction: str = "player", building_type: str = "generic"):
         self.x = x
         self.y = y
         self.faction = faction
         self.building_type = building_type
-        
+
         # Stats de base (à override)
         self.max_hp = 500
         self.hp = self.max_hp
         self.width = 48
         self.height = 48
-        
+
         # Production
         self.can_produce = False
         self.production_queue = []
-        
+
         # Selection
         self.selected = False
+
+        # Animation
+        self.damage_flash = 0.0
+        self.anim_timer = 0.0
     
     def get_color(self) -> tuple:
         """Retourne la couleur du bâtiment (couleur de faction si définie)."""
@@ -55,7 +59,7 @@ class Building:
     
     def take_damage(self, damage: int, attacker=None):
         """Subit des dégâts.
-        
+
         Args:
             damage: Dégâts subis.
             attacker: Unité qui a infligé les dégâts (attribution de l'XP).
@@ -63,40 +67,63 @@ class Building:
         self.hp -= damage
         if attacker is not None:
             self.killed_by = attacker
+        # Trigger damage flash animation
+        self.damage_flash = 0.2
     
     def is_alive(self) -> bool:
         """Vérifie si le bâtiment est debout."""
         return self.hp > 0
     
+    def update_animation(self, dt: float):
+        """Met à jour les animations du bâtiment."""
+        if self.damage_flash > 0:
+            self.damage_flash -= dt
+        self.anim_timer += dt
+
     def draw(self, screen: pygame.Surface, camera_x: float = 0, camera_y: float = 0):
-        """Dessine le bâtiment."""
+        """Dessine le bâtiment avec sprite si disponible."""
         # Convertir les coordonnées map en coordonnées écran
         screen_x = int(self.x - camera_x)
         screen_y = int(self.y - camera_y)
 
-        color = self.get_color()
-        if self.selected:
-            color = COLORS["selected"]
+        # Essayer d'utiliser un sprite
+        sprite = self._get_sprite()
+        if sprite is not None:
+            w, h = sprite.get_width(), sprite.get_height()
+            # Centrer le sprite
+            sx = screen_x - w // 2
+            sy = screen_y - h // 2
 
-        # Rectangle pour le bâtiment
-        pygame.draw.rect(
-            screen,
-            color,
-            (screen_x - self.width // 2, screen_y - self.height // 2, self.width, self.height)
-        )
+            # Flash de dommage
+            if self.damage_flash > 0:
+                # Ajouter un overlay rouge
+                flash = pygame.Surface((w, h), pygame.SRCALPHA)
+                flash.fill((255, 0, 0, 100))
+                sprite.blit(flash, (0, 0))
 
-        # Bordure
-        pygame.draw.rect(
-            screen,
-            (0, 0, 0),
-            (screen_x - self.width // 2, screen_y - self.height // 2, self.width, self.height),
-            2
-        )
+            screen.blit(sprite, (sx, sy))
+        else:
+            # Fallback: rectangle coloré
+            color = self.get_color()
+            if self.selected:
+                color = COLORS["selected"]
+
+            pygame.draw.rect(
+                screen,
+                color,
+                (screen_x - self.width // 2, screen_y - self.height // 2, self.width, self.height)
+            )
+            pygame.draw.rect(
+                screen,
+                (0, 0, 0),
+                (screen_x - self.width // 2, screen_y - self.height // 2, self.width, self.height),
+                2
+            )
 
         # Barre de vie
         bar_width = 40
         bar_height = 6
-        hp_ratio = self.hp / self.max_hp
+        hp_ratio = self.hp / self.max_hp if self.max_hp > 0 else 0
 
         hp_color = (255, 0, 0) if hp_ratio < 0.3 else (0, 255, 0)
 
@@ -121,6 +148,30 @@ class Building:
             screen.blit(text_surface, text_rect)
         except Exception:
             pass
+
+    def _get_sprite(self) -> pygame.Surface:
+        """Retourne le sprite du bâtiment s'il existe."""
+        try:
+            from systems.sprite_generator import SpriteGenerator
+            gen = SpriteGenerator()
+            method_name = f"generate_{self.building_type}"
+            if hasattr(gen, method_name):
+                size_map = {
+                    "town_hall": 64,
+                    "temple": 64,
+                    "barracks": 48,
+                    "farm": 48,
+                    "tower": 48,
+                    "mine": 48,
+                    "lumber_mill": 48,
+                    "workshop": 48,
+                }
+                size = size_map.get(self.building_type, 48)
+                method = getattr(gen, method_name)
+                return method(size)
+        except Exception:
+            pass
+        return None
     
     def to_dict(self) -> dict:
         """Sérialise le bâtiment."""

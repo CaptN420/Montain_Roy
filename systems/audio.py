@@ -167,6 +167,47 @@ class SoundGenerator:
         sample_bytes = struct.pack('<' + 'h' * len(samples), *samples)
         return pygame.mixer.Sound(buffer=sample_bytes)
 
+    def generate_combat_music(self, duration: float = 10.0) -> pygame.mixer.Sound:
+        """Génère une musique de combat plus intense."""
+        # Scale mineure harmonique pour tension
+        base_freq = 246.94  # Sol#
+        notes = [base_freq, base_freq * 1.19, base_freq * 1.42, base_freq * 1.6, base_freq * 1.89]
+        note_duration = 0.25
+        num_samples = int(self.sample_rate * duration)
+        samples = []
+        i = 0
+        note_idx = 0
+        while i < num_samples:
+            freq = notes[note_idx % len(notes)]
+            n = int(self.sample_rate * note_duration)
+            for j in range(n):
+                if i >= num_samples:
+                    break
+                t = i / self.sample_rate
+                # Onde plus agressive (sawtooth doux) + harmonique
+                value = (math.sin(2 * math.pi * freq * t) * 0.5 +
+                        math.sin(2 * math.pi * freq * 1.5 * t) * 0.15)
+                env = min(j / (n * 0.1), (n - j) / (n * 0.2), 1.0)
+                samples.append(int(value * 0.18 * env * 32767))
+                i += 1
+            note_idx += 1
+        sample_bytes = struct.pack('<' + 'h' * len(samples), *samples)
+        return pygame.mixer.Sound(buffer=sample_bytes)
+
+    def generate_victory_music(self) -> pygame.mixer.Sound:
+        """Génère une mélodie de victoire triomphale."""
+        notes = [440, 554.37, 659.26, 880, 659.26, 880, 1108.73, 880]
+        samples = []
+        for freq in notes:
+            n = int(self.sample_rate * 0.2)
+            for i in range(n):
+                t = i / self.sample_rate
+                value = math.sin(2 * math.pi * freq * t) * 0.4
+                env = min(i / (n * 0.1), (n - i) / (n * 0.3), 1.0)
+                samples.append(int(value * env * 32767))
+        sample_bytes = struct.pack('<' + 'h' * len(samples), *samples)
+        return pygame.mixer.Sound(buffer=sample_bytes)
+
 
 class AudioManager:
     """Gère la lecture des sons."""
@@ -209,6 +250,10 @@ class AudioManager:
             "retreat": self.generator.generate_retreat_sound(),
             "skill": self.generator._generate_wave(800, 0.2, "sine", 0.2),
         }
+
+        # Musiques
+        self.music_loop = None
+        self.combat_music = None
     
     def play(self, sound_name: str, volume: float = None):
         """Joue un son."""
@@ -244,16 +289,16 @@ class AudioManager:
         if self.music_channel:
             self.music_channel.set_volume(0 if self.muted else self.music_volume)
 
-    def start_music(self):
-        """Démarre la boucle musicale procédurale (sans interruption des SFX)."""
+    def start_music(self, combat_mode: bool = False):
+        """Démarre la musique (ambiance ou combat)."""
         if not self.audio_enabled:
             return
-        # Ne redémarrer la musique que si elle ne joue pas déjà
-        if self.music_channel and self.music_channel.get_busy():
-            return
         try:
+            if combat_mode:
+                music = self.generator.generate_combat_music()
+            else:
+                music = self.generator.generate_music_loop()
             self.music_channel = pygame.mixer.Channel(0)
-            music = self.generator.generate_music_loop()
             self._music = music
             self.music_channel.set_volume(0 if self.muted else self.music_volume)
             self.music_channel.play(music, loops=-1)
@@ -300,7 +345,12 @@ class AudioEvents:
     def on_victory(self):
         """Appelé en cas de victoire."""
         self.audio.play("victory")
-    
+        if hasattr(self.audio, 'generator'):
+            music = self.audio.generator.generate_victory_music()
+            channel = pygame.mixer.Channel(1)
+            channel.set_volume(self.audio.music_volume)
+            channel.play(music, loops=0)
+
     def on_defeat(self):
         """Appelé en cas de défaite."""
         self.audio.play("defeat")

@@ -1577,6 +1577,9 @@ class Game:
                     self._update_mission_progress("kill", 1)
                     self.visual_effects.add_explosion(unit.x, unit.y, (255, 100, 0))
                     self.audio_events.on_kill()
+                    # Feedback visuel de récolte/combat
+                    if hasattr(unit, 'unit_type') and unit.unit_type in ("worker", "builder"):
+                        self.visual_effects.add_damage_number(unit.x, unit.y - 20, -10, (0, 255, 255))
                     self._show_tutorial("combat",
                                         "Ennemi éliminé ! Cliquez-droit sur un ennemi pour "
                                         "ordonner l'attaque.")
@@ -1600,10 +1603,16 @@ class Game:
                     self._handle_building_destroyed(building)
                 self.visual_effects.add_explosion(building.x, building.y, (255, 80, 0))
                 self.audio_events.on_kill()
+                # Feedback de destruction bâtiment
+                self.visual_effects.add_damage_number(building.x, building.y - 30, -100, (255, 100, 0))
                 self.buildings.remove(building)
         
         # Mettre à jour les effets visuels
         self.visual_effects.update(dt)
+
+        # Mettre à jour les animations des bâtiments
+        for building in self.buildings:
+            building.update_animation(dt)
 
         # Mettre à jour les constructions (les builders construisent les chantiers)
         self.construction_system.update(dt)

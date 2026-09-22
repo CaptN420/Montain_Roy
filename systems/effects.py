@@ -79,36 +79,55 @@ class EffectManager:
         })
     
     def add_explosion(self, x: int, y: int, color: tuple = (255, 100, 0)):
-        """Crée une explosion de particules."""
-        for _ in range(15):
+        """Crée une explosion de particules améliorée."""
+        # Explosion principale
+        for _ in range(20):
             angle = random.random() * 2 * math.pi
-            speed = 50 + random.random() * 100
+            speed = 60 + random.random() * 120
             vx = math.cos(angle) * speed
             vy = math.sin(angle) * speed
-            self.particles.add_particle(x, y, color, 0.5 + random.random() * 0.5, vx, vy, 4)
+            self.particles.add_particle(x, y, color, 0.6 + random.random() * 0.4, vx, vy, 5)
+        # Étincelles
+        for _ in range(10):
+            angle = random.random() * 2 * math.pi
+            speed = 100 + random.random() * 80
+            vx = math.cos(angle) * speed
+            vy = math.sin(angle) * speed - 50
+            self.particles.add_particle(x, y, (255, 255, 200), 0.3 + random.random() * 0.2, vx, vy, 2)
     
     def add_spell_effect(self, x: int, y: int, spell_type: str):
-        """Ajoute un effet de sort."""
+        """Ajoute un effet de sort amélioré."""
         if spell_type == "meteor":
-            # Météore - particules descendantes
-            for _ in range(20):
-                vx = (random.random() - 0.5) * 100
-                vy = -50 - random.random() * 100
-                self.particles.add_particle(x + (random.random() - 0.5) * 50,
-                                           y - 100, (255, 100, 0), 1.0, vx, vy, 6)
+            # Météore - particules descendantes + impact
+            for _ in range(25):
+                vx = (random.random() - 0.5) * 150
+                vy = -80 - random.random() * 120
+                self.particles.add_particle(x + (random.random() - 0.5) * 60,
+                                           y - 120, (255, 150, 0), 1.2, vx, vy, 7)
+            # Impact au sol
+            for _ in range(15):
+                angle = random.random() * 2 * math.pi
+                speed = 80 + random.random() * 60
+                vx = math.cos(angle) * speed
+                vy = math.sin(angle) * speed
+                self.particles.add_particle(x, y, (255, 100, 0), 0.8, vx, vy, 6)
         elif spell_type == "shield":
             # Bouclier - cercle autour de l'unité
-            for angle in range(0, 360, 30):
+            for angle in range(0, 360, 20):
                 rad = math.radians(angle)
-                px = x + math.cos(rad) * 30
-                py = y + math.sin(rad) * 30
-                self.particles.add_particle(px, py, (100, 100, 255), 0.8, 0, 0, 3)
+                px = x + math.cos(rad) * 40
+                py = y + math.sin(rad) * 40
+                self.particles.add_particle(px, py, (100, 150, 255), 1.0, 0, 0, 4)
         elif spell_type == "war_cry":
-            # Cri de guerre - ondes
-            for ring in range(3):
-                self.particles.add_particle(x, y, (255, 215, 0), 0.5 + ring * 0.2,
-                                           math.cos(rad) * 50 * (ring + 1),
-                                           math.sin(rad) * 50 * (ring + 1), 5)
+            # Cri de guerre - ondes multiples
+            for ring in range(4):
+                radius = 30 + ring * 25
+                for angle in range(0, 360, 15):
+                    rad = math.radians(angle)
+                    px = x + math.cos(rad) * radius
+                    py = y + math.sin(rad) * radius
+                    self.particles.add_particle(px, py, (255, 215, 0), 0.6 + ring * 0.15,
+                                               math.cos(rad) * 60, math.sin(rad) * 60, 5)
     
     def update(self, dt: float):
         """Met à jour les effets."""
