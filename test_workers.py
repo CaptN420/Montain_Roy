@@ -1,5 +1,4 @@
-"""
-Unit tests pour les workers - Mountain_Roy RTS
+"""Unit tests pour les workers - Mountain_Roy RTS
 Teste le système de récolte et rapport des ressources
 """
 
@@ -9,7 +8,6 @@ sys.path.insert(0, 'C:/Users/celes/Documents/Hermes-Workspace/Mountain_Roy')
 
 from entities.worker import Worker
 from entities.resource_node import ResourceNode
-
 
 def test_worker_basic():
     """Test de base: création d'un worker"""
@@ -32,7 +30,6 @@ def test_worker_basic():
     print(f"  - Speed: {worker.speed}")
     print(f"  - Carrying: {worker.carrying}")
     print()
-
 
 def test_worker_harvest():
     """Test: Récolte d'une ressource"""
@@ -65,7 +62,6 @@ def test_worker_harvest():
     print(f"✓ Worker arrive à la ressource (distance: {distance:.1f})")
     print()
 
-
 def test_worker_find_drop_off():
     """Test: Trouver le point de dépôt"""
     print("=" * 50)
@@ -80,14 +76,12 @@ def test_worker_find_drop_off():
             self.x = 500
             self.y = 500
             self.faction = "player"
+            self.building_type = "collection"
 
     class MockGame:
-        buildings = []
-        resource_nodes = []
-
         def __init__(self):
-            # Ajouter un building (Town Hall)
-            self.buildings.append(MockBuilding())
+            self.buildings = [MockBuilding()]
+            self.resource_nodes = []
 
     worker.game = MockGame()
 
@@ -97,7 +91,6 @@ def test_worker_find_drop_off():
     assert worker.drop_off_point is not None, "Expected drop_off_point to be set"
     print(f"✓ Point de dépôt trouvé: ({worker.drop_off_point.x}, {worker.drop_off_point.y})")
     print()
-
 
 def test_worker_carry_and_return():
     """Test: Porter les ressources et retourner"""
@@ -113,13 +106,11 @@ def test_worker_carry_and_return():
             self.x = 500
             self.y = 500
             self.faction = "player"
+            self.building_type = "collection"
 
     class MockGame:
-        buildings = []
-        resource_nodes = []
-
         def __init__(self):
-            self.buildings.append(MockBuilding())
+            self.buildings = [MockBuilding()]
             self.resource_nodes = [ResourceNode(120, 100, "wood", 100)]
 
     worker.game = MockGame()
@@ -150,7 +141,6 @@ def test_worker_carry_and_return():
     print(f"  - Worker should move to drop-off")
     print()
 
-
 def test_worker_deposit():
     """Test: Déposer les ressources"""
     print("=" * 50)
@@ -161,8 +151,8 @@ def test_worker_deposit():
 
     # Simuler un game avec economy
     class MockEconomy:
-        resources = {"gold": 0, "wood": 0, "food": 0}
-
+        def __init__(self):
+            self.resources = {"gold": 0, "wood": 0, "food": 0}
         def add_resources(self, gold=0, wood=0, food=0):
             self.resources["gold"] += gold
             self.resources["wood"] += wood
@@ -173,14 +163,14 @@ def test_worker_deposit():
             self.x = 500
             self.y = 500
             self.faction = "player"
+            self.building_type = "collection"
+            self.receive_resources = lambda amount, resource_type, economy: None
 
     class MockGame:
-        economy = MockEconomy()
-        buildings = []
-        resource_nodes = []
-
         def __init__(self):
-            self.buildings.append(MockBuilding())
+            self.economy = MockEconomy()
+            self.buildings = [MockBuilding()]
+            self.resource_nodes = []
 
     worker.game = MockGame()
     worker.drop_off_point = MockBuilding()
@@ -199,7 +189,6 @@ def test_worker_deposit():
     print("✓ Ressources déposées correctement")
     print()
 
-
 def test_worker_selected_behavior():
     """Test: Comportement quand sélectionné"""
     print("=" * 50)
@@ -215,13 +204,11 @@ def test_worker_selected_behavior():
             self.x = 500
             self.y = 500
             self.faction = "player"
+            self.building_type = "collection"
 
     class MockGame:
-        buildings = []
-        resource_nodes = []
-
         def __init__(self):
-            self.buildings.append(MockBuilding())
+            self.buildings = [MockBuilding()]
             self.resource_nodes = [ResourceNode(120, 100, "wood", 100)]
 
     worker.game = MockGame()
@@ -256,12 +243,11 @@ def test_worker_selected_behavior():
         print(f"✗ Worker pas arrivé (distance: {distance:.1f}), mais drop-off trouvé: {worker.drop_off_point is not None}")
     print()
 
-
 def main():
     """Lance tous les tests"""
-    print("\n" + "=" * 50)
+    print("\\n" + "=" * 50)
     print("UNIT TESTS - Workers Mountain_Roy RTS")
-    print("=" * 50 + "\n")
+    print("=" * 50 + "\\n")
 
     try:
         test_worker_basic()
@@ -276,14 +262,13 @@ def main():
         print("=" * 50)
         return True
     except AssertionError as e:
-        print(f"\n✗ TEST FAILED: {e}")
+        print(f"\\n✗ TEST FAILED: {e}")
         return False
     except Exception as e:
-        print(f"\n✗ ERROR: {e}")
+        print(f"\\n✗ ERROR: {e}")
         import traceback
         traceback.print_exc()
         return False
-
 
 if __name__ == "__main__":
     success = main()

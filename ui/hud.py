@@ -6,7 +6,6 @@ Version alignée: Panneau de sélection, boutons de production et construction
 import pygame
 from settings import COLORS
 
-
 class HUD:
     """Interface utilisateur du jeu (HUD) - Version alignée."""
 
@@ -84,46 +83,60 @@ class HUD:
         pygame.draw.rect(self.screen, COLORS["ui_border"], (0, self.hud_y, self.screen.get_width(), self.hud_height), 2)
 
         if selected_units and len(selected_units) > 0:
-            unit = selected_units[0]
+            if len(selected_units) == 1:
+                unit = selected_units[0]
 
-            # Portrait (cercle)
-            portrait_color = unit.get_color() if hasattr(unit, 'get_color') else COLORS["player_unit"]
-            pygame.draw.circle(self.screen, portrait_color, (50, self.hud_y + 50), 30)
+                # Portrait (cercle)
+                portrait_color = unit.get_color() if hasattr(unit, 'get_color') else COLORS["player_unit"]
+                pygame.draw.circle(self.screen, portrait_color, (50, self.hud_y + 50), 30)
 
-            # Nom
-            name = getattr(unit, 'unit_type', 'Unit')
-            rendered = self.font.render(name, True, COLORS["ui_text"])
-            self.screen.blit(rendered, (90, self.hud_y + 10))
+                # Nom
+                name = getattr(unit, 'unit_type', 'Unit')
+                rendered = self.font.render(name, True, COLORS["ui_text"])
+                self.screen.blit(rendered, (90, self.hud_y + 10))
 
-            # Ordre actuel (déplacement/attaque/récolte/construction)
-            order = self.order_text(unit)
-            if order:
-                order_rendered = self.small_font.render(f"◆ {order}", True, (255, 215, 0))
-                self.screen.blit(order_rendered, (90 + rendered.get_width() + 10, self.hud_y + 14))
+                # Ordre actuel (déplacement/attaque/récolte/construction)
+                order = self.order_text(unit)
+                if order:
+                    order_rendered = self.small_font.render(f"◆ {order}", True, (255, 215, 0))
+                    self.screen.blit(order_rendered, (90 + rendered.get_width() + 10, self.hud_y + 14))
 
-            # PV
-            hp_ratio = unit.hp / unit.max_hp if hasattr(unit, 'max_hp') and unit.max_hp > 0 else 0
-            hp_color = (255, 0, 0) if hp_ratio < 0.3 else (0, 255, 0)
-            pygame.draw.rect(self.screen, (100, 100, 100), (90, self.hud_y + 55, 150, 10))
-            pygame.draw.rect(self.screen, hp_color, (90, self.hud_y + 55, int(150 * hp_ratio), 10))
-            hp_text = f"PV: {unit.hp}/{unit.max_hp}" if hasattr(unit, 'max_hp') else f"PV: {unit.hp}"
-            rendered = self.small_font.render(hp_text, True, COLORS["ui_text"])
-            self.screen.blit(rendered, (250, self.hud_y + 55))
+                # PV
+                hp_ratio = unit.hp / unit.max_hp if hasattr(unit, 'max_hp') and unit.max_hp > 0 else 0
+                hp_color = (255, 0, 0) if hp_ratio < 0.3 else (0, 255, 0)
+                pygame.draw.rect(self.screen, (100, 100, 100), (90, self.hud_y + 55, 150, 10))
+                pygame.draw.rect(self.screen, hp_color, (90, self.hud_y + 55, int(150 * hp_ratio), 10))
+                hp_text = f"PV: {unit.hp}/{unit.max_hp}" if hasattr(unit, 'max_hp') else f"PV: {unit.hp}"
+                rendered = self.small_font.render(hp_text, True, COLORS["ui_text"])
+                self.screen.blit(rendered, (250, self.hud_y + 55))
 
-            # Stats
-            stats_text = f"Dégâts: {unit.damage} | Armure: {unit.armor} | Portée: {unit.range}" if hasattr(unit, 'damage') else ""
-            rendered = self.small_font.render(stats_text, True, COLORS["ui_text"])
-            self.screen.blit(rendered, (90, self.hud_y + 85))
+                # Stats
+                stats_text = f"Dégâts: {unit.damage} | Armure: {unit.armor} | Portée: {unit.range}" if hasattr(unit, 'damage') else ""
+                rendered = self.small_font.render(stats_text, True, COLORS["ui_text"])
+                self.screen.blit(rendered, (90, self.hud_y + 85))
 
-            # Niveau et XP (ennemis tués + progression)
-            if hasattr(unit, 'level'):
-                level_xp = ""
-                if hasattr(unit, 'xp') and hasattr(unit, 'xp_to_next') and unit.xp_to_next > 0:
-                    pct = min(100, int(unit.xp / unit.xp_to_next * 100))
-                    level_xp = f"| XP: {pct}%"
-                level_text = f"Niveau {unit.level} {level_xp} | Kills: {getattr(unit, 'kills', 0)}"
-                rendered = self.small_font.render(level_text, True, (255, 215, 0))
-                self.screen.blit(rendered, (90, self.hud_y + 105))
+                # Niveau et XP (ennemis tués + progression)
+                if hasattr(unit, 'level'):
+                    level_xp = ""
+                    if hasattr(unit, 'xp') and hasattr(unit, 'xp_to_next') and unit.xp_to_next > 0:
+                        pct = min(100, int(unit.xp / unit.xp_to_next * 100))
+                        level_xp = f"| XP: {pct}%"
+                    level_text = f"Niveau {unit.level} {level_xp} | Kills: {getattr(unit, 'kills', 0)}"
+                    rendered = self.small_font.render(level_text, True, (255, 215, 0))
+                    self.screen.blit(rendered, (90, self.hud_y + 105))
+            else:
+                # Multi-sélection
+                rendered = self.font.render(f"{len(selected_units)} unités sélectionnées", True, COLORS["ui_text"])
+                self.screen.blit(rendered, (90, self.hud_y + 10))
+
+                # Barre de progression moyenne (simplifiée)
+                avg_hp_ratio = sum(u.hp / u.max_hp for u in selected_units if hasattr(u, 'max_hp') and u.max_hp > 0) / len(selected_units) if any(hasattr(u, 'max_hp') and u.max_hp > 0 for u in selected_units) else 0
+                hp_color = (255, 0, 0) if avg_hp_ratio < 0.3 else (0, 255, 0)
+                pygame.draw.rect(self.screen, (100, 100, 100), (90, self.hud_y + 55, 150, 10))
+                pygame.draw.rect(self.screen, hp_color, (90, self.hud_y + 55, int(150 * avg_hp_ratio), 10))
+                rendered = self.small_font.render(f"PV moyen: {int(avg_hp_ratio * 100)}%", True, COLORS["ui_text"])
+                self.screen.blit(rendered, (250, self.hud_y + 55))
+
         else:
             # Pas de sélection
             rendered = self.font.render("Sélectionnez une unité", True, COLORS["ui_text"])
@@ -167,7 +180,7 @@ class HUD:
         cam_y = self.minimap_y + int(camera.y * map_scale)
         cam_w = int(self.screen.get_width() * map_scale)
         cam_h = int(self.screen.get_height() * map_scale)
-        pygame.draw.rect(self.screen, (255, 255, 255), (cam_x, cam_y, cam_w, cam_h), 1)
+        pygame.draw.rect(self.screen, (255, 255, 255), (cam_x, cam_y, cam_w, cam_h), 2)
 
     def minimap_rect(self) -> pygame.Rect:
         """Rectangle de la minimap (pour détecter un clic et déplacer la caméra)."""
@@ -267,7 +280,7 @@ class HUD:
             "mage": "Mage", "healer": "Soigneur", "scout": "Eclaireur",
             "siege_engine": "Siege", "berserker": "Berserker",
             "ranger": "Ranger", "cannon": "Canon",
-        }
+            }
 
         # Déterminer les unités produisibles (roster de faction si disponible)
         available = []
@@ -278,7 +291,6 @@ class HUD:
                          "mage", "healer", "scout"]
 
         # Associer une touche à chaque unité
-        # Touches 1-6 pour unités de combat, W/J pour workers
         combat_units = [u for u in available if u not in ("worker", "builder")]
         worker_units = [u for u in available if u in ("worker", "builder")]
 
@@ -345,7 +357,8 @@ class HUD:
             "warrior": "Guerrier", "archer": "Archer", "knight": "Chevalier",
             "mage": "Mage", "healer": "Soigneur", "scout": "Eclaireur",
             "siege_engine": "Siege", "berserker": "Berserker",
-            "ranger": "Ranger", "cannon": "Canon", "druid": "Druide",
+            "ranger": "Ranger", "cannon": "Canon",
+            "druid": "Druide",
             "worker": "Worker", "builder": "Builder",
         }
 

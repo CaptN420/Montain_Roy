@@ -31,7 +31,7 @@ from systems.audio import AudioManager, AudioEvents
 from systems.formation import FormationManager
 from systems.tech_tree import TechTree
 from ui.hud import HUD
-from ui.menus import MainMenu, FactionMenu, DifficultyMenu, PauseMenu, VictoryScreen, DefeatScreen
+from ui.menus import MainMenu, FactionMenu, DifficultyMenu, PauseMenu, VictoryScreen, DefeatScreen, OptionsMenu, GameModeMenu
 from systems.factions import get_factions
 
 # Bâtiments capables de produire des unités (y compris les bâtiments uniques de faction)
@@ -56,7 +56,8 @@ class Game:
         self.faction = None        # Objet Faction (sera appliqué au démarrage)
         self.difficulty = "normal"  # easy / normal / hard
         self.sandbox = False       # True en mode libre (pas d'IA, pas de victoire/défaite)
-        self._sandbox_pending = False
+        self.arcade = False        # True en mode arcade (IA active, ressources généreuses)
+        self._game_mode = None     # Mode choisi dans GameModeMenu (SANDBOX/ARCADE/STORY)
         
         # Economy
         self.economy = EconomySystem()
@@ -137,6 +138,8 @@ class Game:
         self.pause_menu = PauseMenu()
         self.victory_screen = VictoryScreen()
         self.defeat_screen = DefeatScreen()
+        self.options_menu = OptionsMenu()
+        self.game_mode_menu = GameModeMenu()
         
         # Stats
         self.stats = {
@@ -418,31 +421,37 @@ class Game:
             
             elif self.state == "menu":
                 action = self.main_menu.handle_event(event)
-                if action == "new_game":
-                    # Aller au choix de faction d'abord
-                    self._sandbox_pending = False
-                    self.state = "faction_select"
-                elif action == "sandbox":
-                    # Mode libre : on choisit sa faction puis on joue librement.
-                    self._sandbox_pending = True
-                    self.state = "faction_select"
+                if action == "game_mode":
+                    self.state = "game_mode_select"
                 elif action == "load_game":
                     self._show_load_menu()
+                elif action == "options":
+                    self.state = "options"
                 elif action == "quit":
                     self.running = False
+
+            elif self.state == "game_mode_select":
+                action = self.game_mode_menu.handle_event(event)
+                if action == "back":
+                    self.state = "menu"
+                elif action in ("SANDBOX", "ARCADE", "STORY"):
+                    self._game_mode = action
+                    self.state = "faction_select"
 
             elif self.state == "faction_select":
                 action = self.faction_menu.handle_event(event)
                 if action == "back":
-                    self._sandbox_pending = False
-                    self.state = "menu"
+                    self._game_mode = None
+                    self.state = "game_mode_select"
                 elif action and action in get_factions():
                     self.faction_id = action
-                    if self._sandbox_pending:
-                        self._sandbox_pending = False
+                    mode = self._game_mode
+                    self._game_mode = None
+                    if mode == "SANDBOX":
                         self._start_sandbox()
-                    else:
-                        # Campagne : aller au choix de difficulté
+                    elif mode == "ARCADE":
+                        self._start_arcade()
+                    else:  # STORY
                         self.state = "difficulty_select"
             
             elif self.state == "difficulty_select":
@@ -455,6 +464,11 @@ class Game:
             
             elif self.state == "load_menu":
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+                    self.state = "menu"
+
+            elif self.state == "options":
+                action = self.options_menu.handle_event(event)
+                if action == "back":
                     self.state = "menu"
             
             elif self.state == "mission_screen":
@@ -754,6 +768,30 @@ class Game:
         # L'IA ne joue pas en mode libre.
         self.ai.state = "idle"
         self._show_ui_message("Mode libre : construis et explore sans limites !", (130, 220, 130), 5.0)
+        self.state = "playing"
+
+    def _start_arcade(self):
+        """Démarre le mode arcade avec la faction choisie.
+
+        IA active, ressources généreuses, travailleurs auto-gérés.
+        Pas de missions : victoire par destruction de la base ennemie.
+        """
+        self.arcade = True
+        self.sandbox = False
+        self.current_mission = None
+        self._apply_faction(self.faction_id)
+        # Ressources de départ généreuses
+        self.economy.gold = 600
+        self.economy.wood = 450
+        self.economy.food = 250
+        # Purger les ennemis puis recréer une base ennemie
+        self.units[:] = [u for u in self.units if u.faction != "enemy"]
+        self.buildings[:] = [b for b in self.buildings if b.faction != "enemy"]
+        self.construction_system.construction_sites[:] = [
+            s for s in self.construction_system.construction_sites if s.faction != "enemy"]
+        self.selected_units[:] = [u for u in self.selected_units if u.faction == "player"]
+        self.ai.initialize_enemy_base()
+        self._show_ui_message("Mode Arcade : détruis la base ennemie !", (255, 200, 100), 5.0)
         self.state = "playing"
 
     def _start_campaign(self):
@@ -1676,19 +1714,23 @@ class Game:
             return
         elif not enemy_townhalls:
             # Victoire : la base ennemie est détruite.
-            if self.current_mission:
-                self.current_mission.complete()
-                self.campaign.complete_current_mission()
-                
-                rewards = self.current_mission.rewards
-                self.economy.add_resources(
-                    gold=rewards.get("gold", 0),
-                    wood=rewards.get("wood", 0),
-                    food=rewards.get("food", 0)
-                )
-                for h in self._player_heroes():
-                    h.gain_experience(rewards.get("experience", 0))
-            
+            # Mode arcade : victoire simple, pas de progression de campagne.
+            if getattr(self, "arcade", False) or not self.current_mission:
+                self.state = "victory"
+                self.audio_events.on_victory()
+                return
+            self.current_mission.complete()
+            self.campaign.complete_current_mission()
+
+            rewards = self.current_mission.rewards
+            self.economy.add_resources(
+                gold=rewards.get("gold", 0),
+                wood=rewards.get("wood", 0),
+                food=rewards.get("food", 0)
+            )
+            for h in self._player_heroes():
+                h.gain_experience(rewards.get("experience", 0))
+
             if self.campaign.is_campaign_complete():
                 self.state = "victory"
                 self.audio_events.on_victory()
@@ -2017,12 +2059,16 @@ class Game:
         """Render the game."""
         if self.state == "menu":
             self.main_menu.draw(self.screen)
+        elif self.state == "game_mode_select":
+            self.game_mode_menu.draw(self.screen)
         elif self.state == "faction_select":
             self.faction_menu.draw(self.screen)
         elif self.state == "difficulty_select":
             self.difficulty_menu.draw(self.screen)
         elif self.state == "load_menu":
             self._draw_load_menu()
+        elif self.state == "options":
+            self.options_menu.draw(self.screen)
         elif self.state == "mission_screen":
             self._draw_mission_screen()
         elif self.state == "paused":

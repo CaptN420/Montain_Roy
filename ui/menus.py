@@ -35,49 +35,99 @@ class MainMenu:
     def __init__(self):
         # Center vertically: 5*50 + 4*10 = 290, start at center - 145
         self.buttons = [
-            MenuButton("Nouvelle Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 135),
-            MenuButton("Mode Libre", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 75),
-            MenuButton("Charger une Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 15),
-            MenuButton("Options", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 45),
+            MenuButton("Nouvelle Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 105),
+            MenuButton("Charger une Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 35),
+            MenuButton("Options", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 35),
             MenuButton("Quitter", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 105),
         ]
     
-    def draw(self, screen):
-        """Dessine le menu."""
-        screen.fill((50, 50, 50))
-        
-        # Titre
-        title_font = pygame.font.Font(None, 72)
-        title = title_font.render("Mountain_Roy", True, (255, 215, 0))
-        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 - 20))
-        screen.blit(title, title_rect)
-        
-        # Sous-titre
-        subtitle_font = pygame.font.Font(None, 24)
-        subtitle = subtitle_font.render("RTS Fantasy - 4 Factions", True, (200, 200, 200))
-        subtitle_rect = subtitle.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 3 + 30))
-        screen.blit(subtitle, subtitle_rect)
-        
-        # Boutons
-        for button in self.buttons:
-            button.draw(screen)
-    
     def handle_event(self, event) -> str:
-        """Gère les événements du menu."""
+        """Gère les événements du menu principal."""
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
             pos = event.pos
             for button in self.buttons:
                 if button.is_clicked(pos):
                     if button.text == "Nouvelle Partie":
-                        return "new_game"
-                    elif button.text == "Mode Libre":
-                        return "sandbox"
-                    elif button.text == "Charger une Partie":
+                        return "game_mode"
+                    if button.text == "Charger une Partie":
                         return "load_game"
-                    elif button.text == "Options":
+                    if button.text == "Options":
                         return "options"
-                    elif button.text == "Quitter":
+                    if button.text == "Quitter":
                         return "quit"
+        return ""
+
+    def draw(self, screen):
+        """Dessine le menu principal."""
+        screen.fill((30, 30, 45))
+        title_font = pygame.font.Font(None, 64)
+        title = title_font.render("Mountain Roy", True, (255, 215, 0))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 100))
+        screen.blit(title, title_rect)
+
+        for button in self.buttons:
+            button.draw(screen)
+
+class GameModeMenu:
+    """Écran de sélection du mode de jeu (SANDBOX, ARCADE, STORY)."""
+    
+    MODES = [
+        ("SANDBOX", "Mode Libre", "Pas d'IA, pas de victoire/défaite. Testez vos factions librement."),
+        ("ARCADE", "Mode Arcade", "Ressources généreuses et travailleurs automatiques."),
+        ("STORY", "Mode Histoire", "Suivez les missions et débloquez des objectifs."),
+    ]
+    
+    def __init__(self):
+        self._selected = "SANDBOX"
+        self.cards = {}
+        for i, (mode_id, label, _) in enumerate(self.MODES):
+            y = SCREEN_HEIGHT // 2 - 70 + i * 60
+            self.cards[mode_id] = pygame.Rect(SCREEN_WIDTH // 2 - 150, y, 300, 50)
+        self.back_button = MenuButton("Retour", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT - 70)
+    
+    def _mode_at(self, pos):
+        for mode_id, rect in self.cards.items():
+            if rect.collidepoint(pos):
+                return mode_id
+        return None
+    
+    def draw(self, screen):
+        screen.fill((30, 30, 45))
+        title_font = pygame.font.Font(None, 52)
+        title = title_font.render("Choisissez le Mode", True, (255, 215, 0))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 70))
+        screen.blit(title, title_rect)
+        
+        for mode_id, label, desc in self.MODES:
+            rect = self.cards[mode_id]
+            hovered = (mode_id == self._selected)
+            color = {"SANDBOX": (100, 100, 100), "ARCADE": (255, 215, 0), "STORY": (100, 200, 255)}[mode_id]
+            pygame.draw.rect(screen, (45, 45, 70), rect, border_radius=8)
+            pygame.draw.rect(screen, color, rect, 3 if hovered else 1, border_radius=8)
+            
+            name_font = pygame.font.Font(None, 28)
+            name = name_font.render(label, True, color)
+            screen.blit(name, (rect.x + 16, rect.y + 12))
+            
+            desc_font = pygame.font.Font(None, 15)
+            desc_surf = desc_font.render(desc, True, (200, 200, 200))
+            screen.blit(desc_surf, (rect.x + 100, rect.y + 16))
+        
+        self.back_button.draw(screen)
+    
+    def handle_event(self, event) -> str:
+        if event.type == pygame.MOUSEMOTION:
+            mode_id = self._mode_at(event.pos)
+            if mode_id:
+                self._selected = mode_id
+            return ""
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            pos = event.pos
+            if self.back_button.is_clicked(pos):
+                return "back"
+            mode_id = self._mode_at(pos)
+            if mode_id:
+                return mode_id
         return ""
 
 
@@ -398,4 +448,117 @@ class DefeatScreen:
             pos = event.pos
             if self.button.is_clicked(pos):
                 return "main_menu"
+        return ""
+
+
+class OptionsMenu:
+    """Écran d'options : musique, SFX, plein écran."""
+
+    SLIDER_W = 240
+    SLIDER_H = 14
+    KNOB_R = 10
+
+    def __init__(self):
+        self._music_vol = 0.7
+        self._sfx_vol = 0.8
+        self._fullscreen = False
+
+        y_base = SCREEN_HEIGHT // 2 - 80
+        self._music_slider_rect = pygame.Rect(
+            SCREEN_WIDTH // 2 + 20, y_base, self.SLIDER_W, self.SLIDER_H)
+        self._sfx_slider_rect = pygame.Rect(
+            SCREEN_WIDTH // 2 + 20, y_base + 50, self.SLIDER_W, self.SLIDER_H)
+
+        self._fs_button = MenuButton(
+            "Plein Écran: OFF", SCREEN_WIDTH // 2 - 100, y_base + 120, 280, 44)
+        self.back_button = MenuButton(
+            "Retour", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT - 70)
+
+    # ── helpers ──────────────────────────────────────────────
+
+    def _knob_x(self, slider_rect, value):
+        return int(slider_rect.x + value * self.SLIDER_W)
+
+    def _slider_clicked(self, event, slider_rect):
+        if event.type != pygame.MOUSEBUTTONDOWN or event.button != 1:
+            return None
+        mx, my = event.pos
+        if slider_rect.x <= mx <= slider_rect.x + self.SLIDER_W and \
+           slider_rect.y - 8 <= my <= slider_rect.y + self.SLIDER_H + 8:
+            return max(0.0, min(1.0, (mx - slider_rect.x) / self.SLIDER_W))
+        return None
+
+    # ── draw ─────────────────────────────────────────────────
+
+    def draw(self, screen):
+        screen.fill((30, 30, 45))
+
+        title_font = pygame.font.Font(None, 48)
+        t = title_font.render("Options", True, (255, 215, 0))
+        screen.blit(t, t.get_rect(center=(SCREEN_WIDTH // 2, 60)))
+
+        label_font = pygame.font.Font(None, 28)
+        val_font = pygame.font.Font(None, 22)
+
+        # ── musique ──
+        mx = self._knob_x(self._music_slider_rect, self._music_vol)
+        screen.blit(label_font.render("Musique", True, (220, 220, 220)),
+                    (SCREEN_WIDTH // 2 - 140, self._music_slider_rect.y - 4))
+        pygame.draw.rect(screen, (80, 80, 100), self._music_slider_rect,
+                         border_radius=self.SLIDER_H // 2)
+        pygame.draw.rect(screen, (100, 180, 255),
+                         pygame.Rect(self._music_slider_rect.x, self._music_slider_rect.y,
+                                     int(self._music_vol * self.SLIDER_W), self.SLIDER_H),
+                         border_radius=self.SLIDER_H // 2)
+        pygame.draw.circle(screen, (220, 220, 255),
+                           (mx, self._music_slider_rect.centery), self.KNOB_R)
+        screen.blit(val_font.render(f"{int(self._music_vol * 100)}%", True, (180, 180, 180)),
+                    (mx + 18, self._music_slider_rect.y - 2))
+
+        # ── SFX ──
+        sx = self._knob_x(self._sfx_slider_rect, self._sfx_vol)
+        screen.blit(label_font.render("Effets", True, (220, 220, 220)),
+                    (SCREEN_WIDTH // 2 - 140, self._sfx_slider_rect.y - 4))
+        pygame.draw.rect(screen, (80, 80, 100), self._sfx_slider_rect,
+                         border_radius=self.SLIDER_H // 2)
+        pygame.draw.rect(screen, (255, 180, 100),
+                         pygame.Rect(self._sfx_slider_rect.x, self._sfx_slider_rect.y,
+                                     int(self._sfx_vol * self.SLIDER_W), self.SLIDER_H),
+                         border_radius=self.SLIDER_H // 2)
+        pygame.draw.circle(screen, (255, 220, 180),
+                           (sx, self._sfx_slider_rect.centery), self.KNOB_R)
+        screen.blit(val_font.render(f"{int(self._sfx_vol * 100)}%", True, (180, 180, 180)),
+                    (sx + 18, self._sfx_slider_rect.y - 2))
+
+        # ── plein écran ──
+        self._fs_button.text = f"Plein Écran: {'ON' if self._fullscreen else 'OFF'}"
+        self._fs_button.draw(screen)
+
+        self.back_button.draw(screen)
+
+    # ── events ──────────────────────────────────────────────
+
+    def handle_event(self, event):
+        """Retourne 'back' ou ''."""
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            pos = event.pos
+
+            if self.back_button.is_clicked(pos):
+                return "back"
+
+            if self._fs_button.is_clicked(pos):
+                self._fullscreen = not self._fullscreen
+                pygame.display.toggle_fullscreen()
+                return ""
+
+            mv = self._slider_clicked(event, self._music_slider_rect)
+            if mv is not None:
+                self._music_vol = mv
+                return ""
+
+            sv = self._slider_clicked(event, self._sfx_slider_rect)
+            if sv is not None:
+                self._sfx_vol = sv
+                return ""
+
         return ""
