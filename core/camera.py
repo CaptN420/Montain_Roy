@@ -33,6 +33,13 @@ class Camera:
         self.x = max(self.min_x, min(self.max_x, self.x))
         self.y = max(self.min_y, min(self.max_y, self.y))
     
+    def move_to(self, target_x: int, target_y: int):
+        """Recentre la caméra sur une position (clic minimap)."""
+        self.x = target_x - SCREEN_WIDTH // 2
+        self.y = target_y - SCREEN_HEIGHT // 2
+        self.x = max(self.min_x, min(self.max_x, self.x))
+        self.y = max(self.min_y, min(self.max_y, self.y))
+    
     def zoom_in(self):
         """Zoom avant."""
         if self.zoom < 2.0:

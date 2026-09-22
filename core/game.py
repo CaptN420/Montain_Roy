@@ -109,6 +109,9 @@ class Game:
         # Selection
         self.selected_units = []
         self.selection_box = None
+
+        # Groupes d'unités (raccourcis Ctrl+1..9 assigner, 1..9 rappeler)
+        self.control_groups = {}  # int -> [unit, ...]
         
         # Box selection state
         self._mouse_down = False
@@ -498,6 +501,11 @@ class Game:
                     elif event.key == pygame.K_F9:
                         self._quick_load()
                     
+                    # Groupes de contrôle (Ctrl+1..9 assigner / 1..9 rappeler).
+                    # Retourne True si traité (sinon laisse passer vers production).
+                    elif self._handle_group_keys(event):
+                        pass
+                    
                     # Production depuis le bâtiment sélectionné (touches 1-6)
                     elif event.key == pygame.K_1:
                         self._produce_selected_index(0)
@@ -575,6 +583,10 @@ class Game:
                     elif event.button == 5:
                         self.camera.zoom_out()
                     elif event.button == 1:
+                        # Clic sur la minimap : recentrer la caméra (avant sélection).
+                        if hasattr(self, 'hud') and self.hud.minimap_rect().collidepoint(event.pos):
+                            self._handle_minimap_click(event.pos)
+                            continue
                         # Start box selection OR place building
                         if self.build_menu_open:
                             # Clic dans le menu de construction : choisir un bâtiment à construire
@@ -1166,6 +1178,30 @@ class Game:
                 new_unit = self.units[-1]
                 self.faction.apply_unit_modifiers(new_unit)
 
+    def _apply_research_effects_to_unit(self, unit):
+        """Applique les bonus de recherche disponibles à une unité nouvellement produite.
+
+        Les effets sont appliqués AU MOMENT où la recherche se termine aux unités
+        déjà présentes ; une unité produite APRÈS doit recevoir les mêmes bonus.
+        """
+        if getattr(unit, "faction", "") != "player":
+            return
+        for tid in self.tech_tree.unlocked_techs:
+            effect = self._RESEARCH_EFFECTS.get(tid, {})
+            if "damage_percent" in effect:
+                unit.damage = int(unit.damage * effect["damage_percent"])
+            if "armor" in effect:
+                unit.armor = getattr(unit, 'armor', 0) + effect["armor"]
+            if "range_percent" in effect:
+                unit.range = int(unit.range * effect["range_percent"])
+            if "attack_speed_percent" in effect:
+                unit.attack_speed = unit.attack_speed * effect["attack_speed_percent"]
+            if "speed_percent" in effect:
+                unit.speed = unit.speed * effect["speed_percent"]
+            if "max_hp_percent" in effect:
+                unit.max_hp = int(unit.max_hp * effect["max_hp_percent"])
+                unit.hp = min(unit.hp or unit.max_hp, unit.max_hp)
+
     def _produce_from_building(self):
         """Produit une unité depuis le bâtiment sélectionné."""
         if not self._selected_building:
@@ -1534,6 +1570,8 @@ class Game:
             self._update_mission_progress("produce", 1)
             if self.faction:
                 self.faction.apply_unit_modifiers(spawned)
+            # Appliquer les bonus de recherche aux unités produites après coup
+            self._apply_research_effects_to_unit(spawned)
 
         # Décrémenter le compteur du message UI (le message disparaît après la durée)
         if self.ui_message_timer > 0:
@@ -1654,7 +1692,82 @@ class Game:
     def effective_dt(self, dt: float) -> float:
         """dt effectif à l'échelle temporelle courante (dt * time_scale)."""
         return dt * self.time_scale
-    
+
+    # ------------------------------------------------------------------
+    # Clic minimap
+    # ------------------------------------------------------------------
+    def _handle_minimap_click(self, screen_pos):
+        """Recentre la caméra sur le point cliqué de la minimap."""
+        rect = self.hud.minimap_rect()
+        map_scale = rect.width / (self.game_map.width * TILE_SIZE)
+        # Position dans la minimap -> coordonnées map (pixels).
+        local_x = screen_pos[0] - rect.x
+        local_y = screen_pos[1] - rect.y
+        map_x = local_x / map_scale
+        map_y = local_y / map_scale
+        self.camera.move_to(map_x, map_y)
+
+    # ------------------------------------------------------------------
+    # Groupes de contrôle (Ctrl+1..9 assigner, 1..9 rappeler)
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _group_key_for(event) -> int:
+        """Retourne l'index (1..9) d'un groupe pour un événement clavier, sinon 0."""
+        num_map = {pygame.K_1: 1, pygame.K_2: 2, pygame.K_3: 3, pygame.K_4: 4,
+                   pygame.K_5: 5, pygame.K_6: 6, pygame.K_7: 7, pygame.K_8: 8,
+                   pygame.K_9: 9}
+        return num_map.get(event.key, 0)
+
+    def _assign_group(self, index: int):
+        """Assigne les unités sélectionnées à un groupe de contrôle (Ctrl+N)."""
+        units = [u for u in self.selected_units if u.faction == "player"]
+        self.control_groups[index] = list(units)
+        if units:
+            self._show_ui_message(f"Groupe {index} assigné ({len(units)} unités)",
+                                  (180, 200, 255), 1.5)
+
+    def _select_group(self, index: int):
+        """Sélectionne un groupe de contrôle (touche N sans Ctrl)."""
+        if index not in self.control_groups:
+            return
+        # Ne garder que les unités encore vivantes.
+        alive = [u for u in self.control_groups[index] if u.is_alive()]
+        self.control_groups[index] = alive
+        if not alive:
+            return
+        # Désélectionner tout.
+        for u in self.units:
+            u.selected = False
+        self.selected_units = list(alive)
+        for u in alive:
+            u.selected = True
+        # Recentrer la caméra sur le groupe.
+        cx = sum(u.x for u in alive) / len(alive)
+        cy = sum(u.y for u in alive) / len(alive)
+        self.camera.move_to(cx, cy)
+
+    def _handle_group_keys(self, event) -> bool:
+        """Gère Ctrl+1..9 (assigner) et 1..9 (rappeler) pendant le jeu.
+
+        Priorité : les touches 1..6 produisent des unités depuis un bâtiment
+        sélectionné — les groupes ne s'activent que si aucun bâtiment n'est
+        sélectionné (sauf Ctrl, qui assigne toujours).
+        """
+        ctrl = bool((event.mod & pygame.KMOD_CTRL))
+        idx = self._group_key_for(event)
+        if idx == 0:
+            return False
+        if ctrl:
+            self._assign_group(idx)
+            return True
+        # Touche simple : production si bâtiment sélectionné, sinon rappel groupe.
+        if self._selected_building is not None:
+            return False  # laisse la production gérer
+        if idx in self.control_groups:
+            self._select_group(idx)
+            return True
+        return False
+
     def _research_next_tech(self):
         """Recherche la prochaine technologie disponible."""
         available = self.tech_tree.get_available_research(
@@ -1741,6 +1854,21 @@ class Game:
         "logging":        {"worker_boost": {"wood": 2}},   # 2x bois par voyage
         "agriculture":    {"worker_boost": {"food": 1}},   # +1 nourriture/voyage
         "fortification":  {"building_hp": 1.20},      # +20% PV bâtiments
+        # Techs factionnelles / avancées (rendues fonctionnelles)
+        "gunpowder":      {"damage_percent": 1.10},   # +10% dégâts (poudre à canon)
+        "orc_warpath":    {"attack_speed_percent": 0.85},  # +15% vitesse d'attaque
+        "woodland_craft": {"damage_percent": 1.15},   # +15% dégâts (archers/rangers)
+        "master_armor":   {"armor": 5},               # +5 armure (nains)
+        "hero_training":  {},                          # (bonus XP héros, géré spécifiquement)
+        "siege_weapons":  {},                          # débloque les engins de siège
+        "ultimate_skill": {},                          # débloque la compétence Météore
+        # Nouvelles techs (2026-09-22)
+        "rapid_weapons":  {"attack_speed_percent": 0.88},  # +12% vitesse d'attaque
+        "mounted_speed":  {"speed_percent": 1.20},    # +20% vitesse de déplacement
+        "veteran_bulk":   {"max_hp_percent": 1.12},   # +12% PV max
+        "scout_sight":    {"range_percent": 1.20},    # +20% portée (éclaireurs voient loin)
+        "rapid_workers":  {"worker_speed": 1.25},     # workers produisent 25% plus vite
+        "siege_power":    {"damage_percent": 1.20},   # +20% dégâts (engins de siège)
     }
 
     def _apply_research_effects(self):
@@ -1769,6 +1897,15 @@ class Game:
                 if u.faction == "player" and hasattr(u, 'unit_type') and u.unit_type in ("worker", "builder"):
                     u.max_carry = int(getattr(u, 'max_carry', 15) * max(1.0, factor))
 
+        # Vitesse de production des workers (rapid_workers)
+        if "worker_speed" in effect:
+            for u in self.units:
+                if u.faction == "player" and hasattr(u, 'unit_type') and u.unit_type in ("worker", "builder"):
+                    for k in ("gold", "wood", "food"):
+                        if k in getattr(u, "base_harvest_speeds", {}):
+                            u.base_harvest_speeds[k] = u.base_harvest_speeds[k] * effect["worker_speed"]
+                    u.harvest_speeds = dict(getattr(u, "base_harvest_speeds", {}))
+
         # Bonus aux bâtiments
         if "building_hp" in effect:
             for b in self.buildings:
@@ -1786,6 +1923,15 @@ class Game:
                 u.armor = getattr(u, 'armor', 0) + effect["armor"]
             if "range_percent" in effect:
                 u.range = int(u.range * effect["range_percent"])
+            if "attack_speed_percent" in effect:
+                # Un facteur <1 = attaque plus rapide (réduit la cadence).
+                u.attack_speed = u.attack_speed * effect["attack_speed_percent"]
+            if "speed_percent" in effect:
+                u.speed = u.speed * effect["speed_percent"]
+            if "max_hp_percent" in effect:
+                old_max = getattr(u, 'max_hp', 100)
+                u.max_hp = int(old_max * effect["max_hp_percent"])
+                u.hp = min(u.hp + int(old_max * (effect["max_hp_percent"] - 1)), u.max_hp)
     
     def _check_mission_objectives(self):
         """Vérifie les objectifs de la mission."""

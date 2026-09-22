@@ -117,6 +117,19 @@ class TechTree:
          {"gold": 250, "wood": 200, "food": 0}, [("archery", True)]),
         ("master_armor", "Armure de Maître", "Toutes les unités naines +5 armure",
          {"gold": 400, "wood": 250, "food": 100}, [("heavy_armor", True)]),
+        # Nouvelles techs (2026-09-22) — profondeur stratégique
+        ("rapid_weapons", "Armes Rapides", "Les unités d'infanterie attaquent 12% plus vite",
+         {"gold": 220, "wood": 120, "food": 30}, [("iron_working", True)]),
+        ("mounted_speed", "Vitesse de Charge", "Les unités montées se déplacent 20% plus vite",
+         {"gold": 250, "wood": 150, "food": 50}, [("heavy_armor", True)]),
+        ("veteran_bulk", "Génération Aguerrie", "Toutes les unités +12% de PV maximum",
+         {"gold": 280, "wood": 180, "food": 60}, [("iron_working", True)]),
+        ("scout_sight", "Vision d'Éclaireur", "Les éclaireurs voient 20% plus loin",
+         {"gold": 120, "wood": 80, "food": 0}, [("archery", True)]),
+        ("rapid_workers", "Cadence de Construction", "Les workers produisent 25% plus vite",
+         {"gold": 180, "wood": 90, "food": 20}, []),
+        ("siege_power", "Pouvoir de Siège", "Les engins de siège +20% de dégâts",
+         {"gold": 350, "wood": 250, "food": 120}, [("siege_weapons", True)]),
     ]
 
     def __init__(self):

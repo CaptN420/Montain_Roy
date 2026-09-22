@@ -169,6 +169,10 @@ class HUD:
         cam_h = int(self.screen.get_height() * map_scale)
         pygame.draw.rect(self.screen, (255, 255, 255), (cam_x, cam_y, cam_w, cam_h), 1)
 
+    def minimap_rect(self) -> pygame.Rect:
+        """Rectangle de la minimap (pour détecter un clic et déplacer la caméra)."""
+        return pygame.Rect(self.minimap_x, self.minimap_y, self.minimap_size, self.minimap_size)
+
     _HERO_ROLE_NAMES = {"warrior": "Guerrier", "mage": "Mage", "archer": "Archer"}
 
     def _draw_hero_summon_buttons(self, game=None):
