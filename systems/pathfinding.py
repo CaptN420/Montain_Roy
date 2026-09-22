@@ -9,10 +9,23 @@ from map.game_map import GameMap
 
 class Pathfinder:
     """Algorithme A* pour le pathfinding."""
-    
+
     def __init__(self, game_map: GameMap):
         self.game_map = game_map
-    
+        # Tuiles occupées par des obstacles dynamiques (murs). Set de (x, y).
+        # Mis à jour par le jeu quand un mur est construit/détruit.
+        self.blocked_cells = set()
+
+    def set_blocked(self, cells):
+        """Remplace l'ensemble des cellules bloquées (tuiles (x, y))."""
+        self.blocked_cells = set(cells)
+
+    def add_blocked(self, x, y):
+        self.blocked_cells.add((x, y))
+
+    def remove_blocked(self, x, y):
+        self.blocked_cells.discard((x, y))
+
     def find_path(self, start_x: int, start_y: int, end_x: int, end_y: int) -> list:
         """Trouve un chemin entre deux points."""
         # Convertir en coordonnées grille
@@ -77,6 +90,8 @@ class Pathfinder:
     def _is_valid_tile(self, x: int, y: int) -> bool:
         """Vérifie si une tuile est valide et traversable."""
         if not self.game_map.is_passable(x, y):
+            return False
+        if (x, y) in self.blocked_cells:
             return False
         return True
     

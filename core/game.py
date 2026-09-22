@@ -1594,6 +1594,61 @@ class Game:
         
         # Vérifier victoire/défaite
         self._check_victory_defeat()
+
+        # Défenses : murs bloquent le chemin + tours tirent sur les ennemis.
+        self._update_defenses(dt)
+    
+    def _update_defenses(self, dt: float):
+        """Synchronise la défense (murs bloquent le pathfinding, tours tirent).
+
+        Les murs agissent comme obstacles dynamiques pour TOUTES les unités
+        (A* dans pathfinder). Cette méthode est robuste si elle tourne à chaque
+        frame : elle recalcule le set de cellules bloquées à partir des murs
+        existants.
+        """
+        # 1) Murs -> cellules bloquées dans le pathfinding.
+        wall_cells = set()
+        for b in self.buildings:
+            if getattr(b, "building_type", "") == "wall" and b.hp > 0:
+                wall_cells.add((int(b.x // TILE_SIZE), int(b.y // TILE_SIZE)))
+        if self.pathfinder is not None:
+            self.pathfinder.set_blocked(wall_cells)
+
+        # 2) Tours -> tirent sur l'ennemi le plus proche à portée.
+        for b in self.buildings:
+            if getattr(b, "building_type", "") == "tower" and b.hp > 0:
+                self._tower_fire(b, dt)
+
+    def _tower_fire(self, tower, dt: float):
+        """Fait tirer une tour sur l'ennemi (ou le joueur) le plus proche à portée."""
+        rng = getattr(tower, "range", 128)
+        dmg = getattr(tower, "damage", 20)
+        if not getattr(tower, "attack_timer", 0):
+            tower.attack_timer = 0.0
+
+        # Cible : adversaire du faction de la tour, le plus proche à portée.
+        enemies = [u for u in self.units
+                   if u.faction != tower.faction and getattr(u, "hp", 0) > 0]
+        target = None
+        min_dist = rng
+        for u in enemies:
+            d = ((u.x - tower.x) ** 2 + (u.y - tower.y) ** 2) ** 0.5
+            if d < min_dist:
+                min_dist = d
+                target = u
+        if target is None:
+            return
+
+        tower.attack_timer += dt
+        if tower.attack_timer >= 1.0:
+            tower.attack_timer = 0.0
+            target.take_damage(dmg)
+            # Petit effet visuel de tir
+            try:
+                self.visual_effects.add_particle(tower.x, tower.y, (255, 200, 60),
+                                                 life=0.3, vx=0, vy=-60)
+            except Exception:
+                pass
     
     def _check_victory_defeat(self):
         """Vérifie la victoire/défaite et fait progresser la campagne."""

@@ -194,11 +194,12 @@ class Mine(Building):
 
 class Tower(Building):
     """Tour défensive."""
-    
+
     def __init__(self, x: int, y: int, faction: str = "player"):
         super().__init__(x, y, faction, "tower")
         self.damage = 20
         self.range = 128
+        self.attack_timer = 0.0
 
 
 class Temple(Building):
