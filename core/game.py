@@ -31,7 +31,7 @@ from systems.audio import AudioManager, AudioEvents
 from systems.formation import FormationManager
 from systems.tech_tree import TechTree
 from ui.hud import HUD
-from ui.menus import MainMenu, FactionMenu, DifficultyMenu, PauseMenu, VictoryScreen, DefeatScreen, OptionsMenu, GameModeMenu
+from ui.menus import MainMenu, FactionMenu, DifficultyMenu, PauseMenu, VictoryScreen, DefeatScreen, OptionsMenu, GameModeMenu, LoadMenu
 from systems.factions import get_factions
 
 # Bâtiments capables de produire des unités (y compris les bâtiments uniques de faction)
@@ -140,6 +140,7 @@ class Game:
         self.defeat_screen = DefeatScreen()
         self.options_menu = OptionsMenu()
         self.game_mode_menu = GameModeMenu()
+        self.load_menu = LoadMenu()
         
         # Stats
         self.stats = {
@@ -425,6 +426,9 @@ class Game:
                     self.state = "game_mode_select"
                 elif action == "load_game":
                     self._show_load_menu()
+                elif action == "sandbox":
+                    self._sandbox_pending = True
+                    self.state = "faction_select"
                 elif action == "options":
                     self.state = "options"
                 elif action == "quit":
@@ -463,6 +467,17 @@ class Game:
                     self._start_campaign()
             
             elif self.state == "load_menu":
+                action = self.load_menu.handle_event(event)
+                if action == "back":
+                    self.state = "menu"
+                elif isinstance(action, tuple) and action[0] == "load":
+                    self._load_save(action[1])
+                elif isinstance(action, tuple) and action[0] == "delete":
+                    idx = action[1]
+                    if 0 <= idx < len(self.load_menu.saves):
+                        save_name = self.load_menu.saves[idx]["name"]
+                        self.save_system.delete_save(save_name)
+                        self.load_menu.remove_save(idx)
                 if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
                     self.state = "menu"
 
@@ -930,11 +945,9 @@ class Game:
                 self.construction_system.faction_bonuses[btype] = entry
     
     def _show_load_menu(self):
-        """Affiche le menu de chargement."""
+        """Affiche le menu de chargement avec la liste des sauvegardes."""
+        self.load_menu.refresh(self.save_system.list_saves())
         self.state = "load_menu"
-        saves = self.save_system.list_saves()
-        if saves:
-            self._load_save(saves[0]["name"])
     
     def _quick_save(self):
         """Sauvegarde rapide."""
@@ -2066,7 +2079,7 @@ class Game:
         elif self.state == "difficulty_select":
             self.difficulty_menu.draw(self.screen)
         elif self.state == "load_menu":
-            self._draw_load_menu()
+            self.load_menu.draw(self.screen)
         elif self.state == "options":
             self.options_menu.draw(self.screen)
         elif self.state == "mission_screen":
@@ -2081,25 +2094,6 @@ class Game:
                 self.defeat_screen.draw(self.screen)
         else:
             self._draw_game()
-    
-    def _draw_load_menu(self):
-        """Dessine le menu de chargement."""
-        self.screen.fill((50, 50, 50))
-        font = pygame.font.Font(None, 36)
-        title = font.render("Charger une partie", True, (255, 255, 255))
-        self.screen.blit(title, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 3))
-        
-        saves = self.save_system.list_saves()
-        if saves:
-            for i, save in enumerate(saves):
-                save_text = font.render(f"{save['name']} - {save['timestamp']}", True, (200, 200, 200))
-                self.screen.blit(save_text, (SCREEN_WIDTH // 2 - 150, SCREEN_HEIGHT // 3 + 50 + i * 40))
-        else:
-            no_save = font.render("Aucune sauvegarde trouvée", True, (200, 200, 200))
-            self.screen.blit(no_save, (SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 3 + 50))
-        
-        hint = pygame.font.Font(None, 24).render("ESC pour revenir au menu", True, (150, 150, 150))
-        self.screen.blit(hint, (SCREEN_WIDTH // 2 - 80, SCREEN_HEIGHT // 2))
     
     def _draw_mission_screen(self):
         """Dessine l'écran de mission."""

@@ -33,14 +33,15 @@ class MainMenu:
     """Menu principal du jeu."""
 
     def __init__(self):
-        # Center vertically: 5*50 + 4*10 = 290, start at center - 145
+        # Center vertically: 6*50 + 5*10 = 350, start at center - 175
         self.buttons = [
-            MenuButton("Nouvelle Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 105),
-            MenuButton("Charger une Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 35),
-            MenuButton("Options", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 35),
-            MenuButton("Quitter", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 105),
+            MenuButton("Nouvelle Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 140),
+            MenuButton("Charger une Partie", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 - 70),
+            MenuButton("Mode Libre", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2),
+            MenuButton("Options", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 70),
+            MenuButton("Quitter", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT // 2 + 140),
         ]
-    
+
     def handle_event(self, event) -> str:
         """Gère les événements du menu principal."""
         if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
@@ -51,6 +52,8 @@ class MainMenu:
                         return "game_mode"
                     if button.text == "Charger une Partie":
                         return "load_game"
+                    if button.text == "Mode Libre":
+                        return "sandbox"
                     if button.text == "Options":
                         return "options"
                     if button.text == "Quitter":
@@ -562,3 +565,125 @@ class OptionsMenu:
                 return ""
 
         return ""
+
+
+class LoadMenu:
+    """Écran de chargement : affiche la liste des sauvegardes."""
+
+    CARD_H = 44
+    MAX_VISIBLE = 8
+
+    def __init__(self):
+        self.saves = []               # [{name, timestamp}, ...]
+        self.selected_index = -1      # -1 = rien sélectionné
+        self.back_button = MenuButton(
+            "Retour", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT - 70)
+        # Bouton charger (visible seulement si une save est sélectionnée)
+        self.load_button = MenuButton(
+            "Charger", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT - 130, 200, 40)
+        # Bouton supprimer
+        self.delete_button = MenuButton(
+            "Supprimer", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT - 190, 200, 40)
+
+    def refresh(self, save_list: list):
+        """Met à jour la liste depuis le système de sauvegarde."""
+        self.saves = save_list
+        self.selected_index = -1
+
+    # ── draw ─────────────────────────────────────────────────
+
+    def draw(self, screen):
+        screen.fill((30, 30, 45))
+
+        title_font = pygame.font.Font(None, 48)
+        t = title_font.render("Charger une Partie", True, (255, 215, 0))
+        screen.blit(t, t.get_rect(center=(SCREEN_WIDTH // 2, 50)))
+
+        if not self.saves:
+            no_font = pygame.font.Font(None, 28)
+            no = no_font.render("Aucune sauvegarde trouvée", True, (150, 150, 150))
+            screen.blit(no, no.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 40)))
+        else:
+            card_font = pygame.font.Font(None, 21)
+            date_font = pygame.font.Font(None, 16)
+            y_start = 110
+            for i, save in enumerate(self.saves[:self.MAX_VISIBLE]):
+                y = y_start + i * (self.CARD_H + 6)
+                rect = pygame.Rect(SCREEN_WIDTH // 2 - 220, y, 440, self.CARD_H)
+                hovered = (i == self.selected_index)
+
+                bg = (60, 60, 90) if hovered else (40, 40, 60)
+                border = (255, 215, 0) if hovered else (80, 80, 110)
+                pygame.draw.rect(screen, bg, rect, border_radius=6)
+                pygame.draw.rect(screen, border, rect, 2, border_radius=6)
+
+                name = card_font.render(save.get("name", "?"), True, (255, 255, 255))
+                screen.blit(name, (rect.x + 12, rect.y + 6))
+                ts = save.get("timestamp", "")
+                ts_text = date_font.render(ts, True, (180, 180, 180))
+                screen.blit(ts_text, (rect.x + 12, rect.y + 24))
+
+            # Indicateur de scroll si > MAX_VISIBLE
+            if len(self.saves) > self.MAX_VISIBLE:
+                hint = date_font.render(
+                    f"{len(self.saves)} sauvegardes — {self.MAX_VISIBLE} affichées",
+                    True, (120, 120, 120))
+                screen.blit(hint, (SCREEN_WIDTH // 2 - 120, y_start + self.MAX_VISIBLE * 50 + 10))
+
+        # Boutons d'action (seulement si sélection valide)
+        if self.selected_index >= 0:
+            self.load_button.draw(screen)
+            self.delete_button.draw(screen)
+
+        self.back_button.draw(screen)
+
+    # ── events ──────────────────────────────────────────────
+
+    def _card_at(self, pos):
+        """Retourne l'index de la carte sous la souris, ou -1."""
+        y_start = 110
+        for i in range(min(len(self.saves), self.MAX_VISIBLE)):
+            y = y_start + i * (self.CARD_H + 6)
+            rect = pygame.Rect(SCREEN_WIDTH // 2 - 220, y, 440, self.CARD_H)
+            if rect.collidepoint(pos):
+                return i
+        return -1
+
+    def handle_event(self, event):
+        """Retourne ('load', save_name), ('delete', index), 'back', ou ''."""
+        if event.type == pygame.MOUSEMOTION:
+            idx = self._card_at(event.pos)
+            if idx >= 0:
+                self.selected_index = idx
+            return ""
+
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            pos = event.pos
+
+            if self.back_button.is_clicked(pos):
+                return "back"
+
+            idx = self._card_at(pos)
+            if idx >= 0:
+                self.selected_index = idx
+                # Clic sur la carte → sélectionner (double-clic implicite = charger)
+                return ""
+
+            if self.selected_index >= 0:
+                if self.load_button.is_clicked(pos):
+                    return ("load", self.saves[self.selected_index]["name"])
+                if self.delete_button.is_clicked(pos):
+                    target = self.selected_index
+                    self.selected_index = -1
+                    return ("delete", target)
+
+        return ""
+
+    # ── supprimer ───────────────────────────────────────────
+
+    def remove_save(self, index: int):
+        """Retire une entrée de la liste locale (après suppression disque)."""
+        if 0 <= index < len(self.saves):
+            self.saves.pop(index)
+            if self.selected_index >= len(self.saves):
+                self.selected_index = -1

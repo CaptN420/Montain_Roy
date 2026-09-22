@@ -75,7 +75,7 @@ class EnemyAI:
         }
         self.dev = targets.get(d, targets["normal"])
         # Temps entre chaque micro-décision de développement (plus rapide en hard).
-        self.dev_interval = {"easy": 2.5, "normal": 2.0, "hard": 1.2}.get(d, 2.0)
+        self.dev_interval = {"easy": 1.2, "normal": 0.8, "hard": 0.5}.get(d, 1.0)
         self._dev_timer = 0.0
 
     def _mission_time(self):
@@ -114,7 +114,12 @@ class EnemyAI:
         self._dev_timer += dt
         if self._dev_timer >= self.dev_interval:
             self._dev_timer = 0.0
-            self._develop()
+            # En fast-forward, l'IA fait plusieurs actions par tick pour suivre
+            # le rythme du joueur (qui peut spammer commandes manuellement).
+            time_scale = getattr(self.game, 'time_scale', 1)
+            actions = max(1, int(time_scale // 2))
+            for _ in range(actions):
+                self._develop()
 
         # Changer d'état tactique périodiquement
         if self.state_timer > 3.0:
