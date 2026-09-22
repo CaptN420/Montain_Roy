@@ -40,11 +40,11 @@ class Archer(Unit):
         self.unit_type = "archer"
         self.max_hp = 60
         self.hp = self.max_hp
-        self.damage = 12
+        self.damage = 16
         self.armor = 0
         self.speed = 45
         self.range = 128
-        self.attack_speed = 1.2
+        self.attack_speed = 1.0
         self.radius = 12
         
         self.cost = {
@@ -86,11 +86,11 @@ class Mage(Unit):
         self.unit_type = "mage"
         self.max_hp = 80
         self.hp = self.max_hp
-        self.damage = 30
+        self.damage = 40
         self.armor = 0
         self.speed = 35
         self.range = 96
-        self.attack_speed = 2.0
+        self.attack_speed = 1.6
         self.radius = 14
         
         self.cost = {

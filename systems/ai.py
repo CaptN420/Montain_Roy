@@ -111,8 +111,10 @@ class EnemyAI:
         # Déterminer l'état basé sur la situation
         if enemy_count < 3:
             self.state = "produce"
+        elif enemy_count > player_count * 1.5:
+            self.state = "attack"   # l'IA domine : pousser l'avantage
         elif player_count > enemy_count * 1.5:
-            self.state = "attack"
+            self.state = "defend"   # le joueur domine : protéger la base
         else:
             self.state = random.choice(["gather", "build", "produce"])
     

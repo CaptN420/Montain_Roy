@@ -295,8 +295,8 @@ FACTION_DATA = {
                                             "heavy_armor", "siege_weapons",
                                             "orc_warpath"],
         "modifiers": {
-            "all": {"damage_percent": 1.25, "max_hp_percent": 1.15},
-            "warrior": {"damage_percent": 1.3},
+            "all": {"damage_percent": 1.15, "max_hp_percent": 1.10},
+            "warrior": {"damage_percent": 1.2},
             "archer": {"damage_percent": 0.7},  # orcs n'ont pas d'archers bons
             "mage": {"max_hp_percent": 0.7},
         },
@@ -306,7 +306,7 @@ FACTION_DATA = {
         },
         "special_ability": {
             "name": "Furie de Guerre",
-            "description": "+25% de dégâts et +15% de PV sur toutes les unités."
+            "description": "+15% de dégâts et +10% de PV sur toutes les unités."
         },
         "primary_war_building": "orc_war_hut",
         "strength": "Dégâts/HP énormes, production rapide",
