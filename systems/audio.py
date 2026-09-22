@@ -118,6 +118,37 @@ class SoundGenerator:
         """Génère un son de clic UI."""
         return self._generate_wave(800, 0.05, "square", 0.1)
 
+    def generate_music_loop(self, duration: float = 8.0) -> pygame.mixer.Sound:
+        """Génère une boucle musicale d'ambiance procédurale.
+
+        Construit un arpège doux (mineur) répété sur `duration` secondes pour
+        servir de musique de fond légère. Volume bas pour ne pas masquer les SFX.
+        """
+        base_freq = 220.0
+        # Arpège en mineur naturel : la, do, mi, la (octave), sol
+        notes = [base_freq, base_freq * 1.2, base_freq * 1.5, base_freq * 2.0, base_freq * 1.8]
+        note_duration = 0.4
+        num_samples = int(self.sample_rate * duration)
+        samples = []
+        i = 0
+        note_idx = 0
+        while i < num_samples:
+            freq = notes[note_idx % len(notes)]
+            n = int(self.sample_rate * note_duration)
+            for j in range(n):
+                if i >= num_samples:
+                    break
+                t = i / self.sample_rate
+                # Onde douce (sine) + légère harmonique pour la chaleur
+                value = math.sin(2 * math.pi * freq * t) * 0.6 + math.sin(2 * math.pi * freq * 2 * t) * 0.2
+                # Enveloppe douce (attack/release) pour éviter les clics
+                env = min(j / (n * 0.15), (n - j) / (n * 0.3), 1.0)
+                samples.append(int(value * 0.12 * env * 32767))
+                i += 1
+            note_idx += 1
+        sample_bytes = struct.pack('<' + 'h' * len(samples), *samples)
+        return pygame.mixer.Sound(buffer=sample_bytes)
+
 
 class AudioManager:
     """Gère la lecture des sons."""
@@ -129,6 +160,7 @@ class AudioManager:
         self.music_volume = 0.3
         self.sfx_volume = 0.5
         self.muted = False
+        self.music_channel = None
 
         self._load_sounds()
     
@@ -185,8 +217,32 @@ class AudioManager:
         self.sfx_volume = max(0, min(1, volume))
     
     def toggle_mute(self):
-        """Active/désactive le son."""
+        """Active/désactive le son (SFX + musique)."""
         self.muted = not self.muted
+        if self.music_channel:
+            self.music_channel.set_volume(0 if self.muted else self.music_volume)
+
+    def start_music(self):
+        """Démarre la boucle musicale procédurale (sans interruption des SFX)."""
+        if not self.audio_enabled:
+            return
+        # Ne redémarrer la musique que si elle ne joue pas déjà
+        if self.music_channel and self.music_channel.get_busy():
+            return
+        try:
+            self.music_channel = pygame.mixer.Channel(0)
+            music = self.generator.generate_music_loop()
+            self._music = music
+            self.music_channel.set_volume(0 if self.muted else self.music_volume)
+            self.music_channel.play(music, loops=-1)
+        except Exception:
+            self.music_channel = None
+
+    def stop_music(self):
+        """Arrête la boucle musicale."""
+        if self.music_channel:
+            self.music_channel.stop()
+            self.music_channel = None
 
 
 class AudioEvents:

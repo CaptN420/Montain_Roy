@@ -48,6 +48,12 @@ class Unit:
         self.is_moving = False
         self.move_target = None
         self.path = []  # points de passage en pixels, calculés par MovementSystem
+
+        # Animation de sprites (marche / attaque / mort)
+        self.anim_state = "idle"
+        self.anim_frame = 0
+        self.anim_timer = 0.0
+        self.facing = 1  # 1 = droite, -1 = gauche (pour le flip)
     
     def get_color(self) -> tuple:
         """Retourne la couleur de l'unité (couleur de faction si définie)."""
@@ -97,6 +103,48 @@ class Unit:
                 self.move_target = (self.target.x, self.target.y)
         else:
             self.target = None
+        
+        # Mise à jour de l'état d'animation
+        self._update_animation(dt)
+
+    def _update_animation(self, dt: float):
+        """Détermine l'état d'animation (idle/walk/attack/death) et avance les frames."""
+        from systems.sprite_anim import ANIM_IDLE, ANIM_WALK, ANIM_ATTACK, ANIM_DEATH, FRAME_COUNTS
+
+        # Direction du personnage (vers la cible ou le déplacement)
+        if self.target is not None and self.target.hp > 0:
+            if self.target.x > self.x:
+                self.facing = 1
+            else:
+                self.facing = -1
+        elif self.is_moving and self.move_target:
+            if self.move_target[0] > self.x:
+                self.facing = 1
+            else:
+                self.facing = -1
+
+        if not self.is_alive():
+            new_state = ANIM_DEATH
+        elif self.target is not None and self.target.hp > 0 and self.attack_timer < self.attack_speed * 0.4:
+            # Pendant la fenêtre d'attaque
+            new_state = ANIM_ATTACK
+        elif self.is_moving:
+            new_state = ANIM_WALK
+        else:
+            new_state = ANIM_IDLE
+
+        if new_state != self.anim_state:
+            self.anim_state = new_state
+            self.anim_frame = 0
+            self.anim_timer = 0.0
+
+        # Avancer la frame selon la vitesse de l'état
+        from systems.sprite_anim import FRAME_FPS
+        fps = FRAME_FPS.get(new_state, 8)
+        self.anim_timer += dt
+        if self.anim_timer >= 1.0 / fps:
+            self.anim_timer = 0.0
+            self.anim_frame = (self.anim_frame + 1) % FRAME_COUNTS.get(new_state, 2)
     
     def take_damage(self, damage: int, attacker=None):
         """Subit des dégâts.
@@ -121,6 +169,13 @@ class Unit:
         self.hp -= actual_damage
         if attacker is not None:
             self.killed_by = attacker
+        
+        # Son de coup sur la cible (si le jeu est branché à l'audio)
+        if getattr(self, 'game', None) is not None and hasattr(self.game, 'audio_events'):
+            try:
+                self.game.audio_events.on_unit_hit(actual_damage)
+            except Exception:
+                pass
             
     def is_alive(self) -> bool:
         """Vérifie si l'unité est vivante."""
@@ -152,25 +207,37 @@ class Unit:
         return base_xp + level_bonus
     
     def draw(self, screen: pygame.Surface, camera_x: float = 0, camera_y: float = 0):
-        """Dessine l'unité."""
+        """Dessine l'unité (sprite animé + barre de vie)."""
         # Convertir les coordonnées map en coordonnées écran
         screen_x = int(self.x - camera_x)
         screen_y = int(self.y - camera_y)
-        
-        # Cercle pour l'unité
-        color = self.get_color()
+
+        # Dessiner le sprite animé s'il est disponible, sinon un cercle
+        try:
+            from systems.sprite_anim import get_animator
+            animator = get_animator()
+            unit_type = getattr(self, "unit_type", "")
+            if unit_type:
+                animator.draw(screen, unit_type, self.anim_state, self.anim_frame,
+                              screen_x, screen_y, flip_x=(self.facing < 0),
+                              radius=self.radius)
+            else:
+                self._draw_circle(screen, screen_x, screen_y)
+        except Exception:
+            self._draw_circle(screen, screen_x, screen_y)
+
+        # Cercle de sélection (léger, sous l'unité)
         if self.selected:
-            color = COLORS["selected"]
-        
-        pygame.draw.circle(screen, color, (screen_x, screen_y), self.radius)
-        
+            pygame.draw.circle(screen, (0, 255, 0), (screen_x, screen_y),
+                               self.radius + 3, 1)
+
         # Barre de vie
         bar_width = 30
         bar_height = 4
         hp_ratio = self.hp / self.max_hp
-        
+
         hp_color = (255, 0, 0) if hp_ratio < 0.3 else (0, 255, 0)
-        
+
         pygame.draw.rect(
             screen, 
             (100, 100, 100), 
@@ -181,6 +248,13 @@ class Unit:
             hp_color, 
             (screen_x - bar_width // 2, screen_y - self.radius - 10, int(bar_width * hp_ratio), bar_height)
         )
+
+    def _draw_circle(self, screen, screen_x, screen_y):
+        """Fallback : dessine l'unité en cercle coloré (si pas de sprite)."""
+        color = self.get_color()
+        if self.selected:
+            color = COLORS["selected"]
+        pygame.draw.circle(screen, color, (screen_x, screen_y), self.radius)
     
     def get_synergy_bonus(self, game) -> dict:
         """Calcule les bonus de synergie basés sur l'environnement et les alliés proches."""

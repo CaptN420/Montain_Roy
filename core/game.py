@@ -31,7 +31,7 @@ from systems.audio import AudioManager, AudioEvents
 from systems.formation import FormationManager
 from systems.tech_tree import TechTree
 from ui.hud import HUD
-from ui.menus import MainMenu, FactionMenu, PauseMenu, VictoryScreen, DefeatScreen
+from ui.menus import MainMenu, FactionMenu, DifficultyMenu, PauseMenu, VictoryScreen, DefeatScreen
 from systems.factions import get_factions
 
 # Bâtiments capables de produire des unités (y compris les bâtiments uniques de faction)
@@ -54,6 +54,7 @@ class Game:
         self.state = "menu"
         self.faction_id = "human"  # Faction choisie par le joueur (défaut humain)
         self.faction = None        # Objet Faction (sera appliqué au démarrage)
+        self.difficulty = "normal"  # easy / normal / hard
         
         # Economy
         self.economy = EconomySystem()
@@ -127,6 +128,7 @@ class Game:
         self.hud = HUD(SCREEN_WIDTH, SCREEN_HEIGHT)
         self.main_menu = MainMenu()
         self.faction_menu = FactionMenu()
+        self.difficulty_menu = DifficultyMenu()
         self.pause_menu = PauseMenu()
         self.victory_screen = VictoryScreen()
         self.defeat_screen = DefeatScreen()
@@ -382,6 +384,7 @@ class Game:
     
     def run(self):
         """Main game loop."""
+        self._last_music_state = None
         while self.running:
             dt = self.clock.tick(FPS) / 1000.0
             
@@ -390,8 +393,17 @@ class Game:
             self.draw()
             pygame.display.flip()
         
+        self.audio_manager.stop_music()
         pygame.quit()
         sys.exit()
+    
+    def _sync_music(self):
+        """Démarre/arrête la musique selon l'état du jeu (appelé depuis update)."""
+        wants_music = self.state in ("playing", "mission_screen")
+        if wants_music:
+            self.audio_manager.start_music()
+        else:
+            self.audio_manager.stop_music()
     
     def handle_events(self):
         """Handle input events."""
@@ -415,6 +427,15 @@ class Game:
                     self.state = "menu"
                 elif action and action in get_factions():
                     self.faction_id = action
+                    # Aller au choix de difficulté avant de lancer la campagne
+                    self.state = "difficulty_select"
+            
+            elif self.state == "difficulty_select":
+                action = self.difficulty_menu.handle_event(event)
+                if action == "back":
+                    self.state = "faction_select"
+                elif action in ("easy", "normal", "hard"):
+                    self.difficulty = action
                     self._start_campaign()
             
             elif self.state == "load_menu":
@@ -691,6 +712,8 @@ class Game:
         self._apply_faction(self.faction_id)
         self.campaign = create_default_campaign()
         self.current_mission = self.campaign.start_next_mission()
+        # Appliquer la difficulté choisie à la config ennemie
+        self._apply_difficulty()
         # Le camp ennemi de la mission 1 vient de la CONFIG de la mission
         # (et non du setup inline de __init__, qui ne crée aucun guerrier),
         # pour assurer une cohérence stricte avec les missions 2+.
@@ -701,6 +724,38 @@ class Game:
         self.buildings[:] = [b for b in self.buildings if b.faction != "enemy"]
         self.ai.initialize_enemy_base()
         self.state = "mission_screen"
+
+    def _apply_difficulty(self):
+        """Applique la difficulté choisie à la config ennemie de la mission courante.
+
+        - easy   : ennemis affaiblis (moins de guerriers/fermes/tours, or réduit),
+                   le joueur démarre avec plus de ressources.
+        - normal : config de la mission inchangée.
+        - hard   : ennemis renforcés (plus de guerriers/fermes/tours, or augmenté).
+        """
+        if not self.current_mission:
+            return
+        cfg = dict(self.current_mission.enemy_config)
+
+        if self.difficulty == "easy":
+            cfg["warriors"] = max(1, cfg.get("warriors", 3) - 2)
+            cfg["workers"] = max(2, cfg.get("workers", 4) - 1)
+            cfg["farms"] = max(1, cfg.get("farms", 3) - 1)
+            cfg["towers"] = max(0, cfg.get("towers", 0) - 1)
+            cfg["gold"] = max(50, int(cfg.get("gold", 200) * 0.6))
+            cfg["wood"] = max(50, int(cfg.get("wood", 150) * 0.6))
+            # Bonus joueur : ressources de départ +50%
+            self.economy.gold = int(self.economy.gold * 1.5)
+            self.economy.wood = int(self.economy.wood * 1.5)
+        elif self.difficulty == "hard":
+            cfg["warriors"] = cfg.get("warriors", 3) + 3
+            cfg["workers"] = cfg.get("workers", 4) + 1
+            cfg["farms"] = cfg.get("farms", 3) + 1
+            cfg["towers"] = cfg.get("towers", 0) + 1
+            cfg["gold"] = int(cfg.get("gold", 200) * 1.5)
+            cfg["wood"] = int(cfg.get("wood", 150) * 1.4)
+
+        self.current_mission.enemy_config = cfg
 
     def _apply_faction(self, faction_id: str):
         """Applique les bonus de la faction à l'économie et aux entités."""
@@ -1335,6 +1390,7 @@ class Game:
     
     def update(self, dt: float):
         """Update game state."""
+        self._sync_music()
         if self.state != "playing":
             return
 
@@ -1483,10 +1539,12 @@ class Game:
             self.state = "defeat"
             if self.current_mission:
                 self.current_mission.fail()
+            self.audio_events.on_defeat()
             return
         
         if len(player_buildings) == 0:
             self.state = "defeat"
+            self.audio_events.on_defeat()
             return
         elif not enemy_townhalls:
             # Victoire : la base ennemie est détruite.
@@ -1505,9 +1563,12 @@ class Game:
             
             if self.campaign.is_campaign_complete():
                 self.state = "victory"
+                self.audio_events.on_victory()
             else:
                 self.current_mission = self.campaign.start_next_mission()
                 if self.current_mission:
+                    # Appliquer la difficulté à la nouvelle mission
+                    self._apply_difficulty()
                     # Purger les ennemis survivants (la mission est gagnée) puis
                     # recréer une base propre pour la mission suivante.
                     self.units[:] = [u for u in self.units if u.faction != "enemy"]
@@ -1516,6 +1577,7 @@ class Game:
                     self.state = "mission_screen"
                 else:
                     self.state = "victory"
+                    self.audio_events.on_victory()
     
     def _update_mission_progress(self, objective_type: str, amount: int = 1):
         """Met à jour la progression de la mission."""
@@ -1721,6 +1783,8 @@ class Game:
             self.main_menu.draw(self.screen)
         elif self.state == "faction_select":
             self.faction_menu.draw(self.screen)
+        elif self.state == "difficulty_select":
+            self.difficulty_menu.draw(self.screen)
         elif self.state == "load_menu":
             self._draw_load_menu()
         elif self.state == "mission_screen":

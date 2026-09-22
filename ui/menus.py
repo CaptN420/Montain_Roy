@@ -198,6 +198,81 @@ class FactionMenu:
         return ""
 
 
+class DifficultyMenu:
+    """Écran de sélection de la difficulté (facile / normal / difficile)."""
+
+    DIFFICULTIES = [
+        ("easy", "Facile", "Ennemi affaibli, ressources de départ joueur boostées."),
+        ("normal", "Normal", "Équilibre classique."),
+        ("hard", "Difficile", "Ennemi renforcé, base ennemie plus riche."),
+    ]
+
+    def __init__(self):
+        self._selected = "normal"
+        # Boutons centrés verticalement
+        start_y = SCREEN_HEIGHT // 2 - 70
+        self.cards = {}
+        for i, (diff_id, label, _) in enumerate(self.DIFFICULTIES):
+            y = start_y + i * 60
+            self.cards[diff_id] = pygame.Rect(SCREEN_WIDTH // 2 - 150, y, 300, 50)
+        self.back_button = MenuButton("Retour", SCREEN_WIDTH // 2 - 100, SCREEN_HEIGHT - 70)
+
+    def _diff_at(self, pos):
+        for diff_id, rect in self.cards.items():
+            if rect.collidepoint(pos):
+                return diff_id
+        return None
+
+    def draw(self, screen):
+        """Dessine l'écran de difficulté."""
+        screen.fill((30, 30, 45))
+
+        title_font = pygame.font.Font(None, 52)
+        title = title_font.render("Choisissez la Difficulté", True, (255, 215, 0))
+        title_rect = title.get_rect(center=(SCREEN_WIDTH // 2, 70))
+        screen.blit(title, title_rect)
+
+        hint_font = pygame.font.Font(None, 20)
+        hint = hint_font.render("Cliquez sur un niveau pour commencer la campagne",
+                                True, (180, 180, 180))
+        hint_rect = hint.get_rect(center=(SCREEN_WIDTH // 2, 110))
+        screen.blit(hint, hint_rect)
+
+        for diff_id, label, desc in self.DIFFICULTIES:
+            rect = self.cards[diff_id]
+            hovered = (diff_id == self._selected)
+            color = {"easy": (60, 150, 60), "normal": (200, 170, 60),
+                     "hard": (200, 70, 50)}[diff_id]
+            pygame.draw.rect(screen, (45, 45, 70), rect, border_radius=8)
+            pygame.draw.rect(screen, color, rect, 3 if hovered else 1, border_radius=8)
+
+            name_font = pygame.font.Font(None, 28)
+            name = name_font.render(label, True, color)
+            screen.blit(name, (rect.x + 16, rect.y + 12))
+
+            desc_font = pygame.font.Font(None, 15)
+            desc_surf = desc_font.render(desc, True, (200, 200, 200))
+            screen.blit(desc_surf, (rect.x + 100, rect.y + 16))
+
+        self.back_button.draw(screen)
+
+    def handle_event(self, event) -> str:
+        """Gère les événements. Retourne l'id difficulté ou 'back'."""
+        if event.type == pygame.MOUSEMOTION:
+            diff_id = self._diff_at(event.pos)
+            if diff_id:
+                self._selected = diff_id
+            return ""
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            pos = event.pos
+            if self.back_button.is_clicked(pos):
+                return "back"
+            diff_id = self._diff_at(pos)
+            if diff_id:
+                return diff_id
+        return ""
+
+
 class PauseMenu:
     """Menu de pause."""
 

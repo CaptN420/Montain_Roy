@@ -265,6 +265,95 @@ class SpriteGenerator:
         pygame.draw.rect(surface, dagger, (cx + 11, cy + 4, 3, 10))
         
         return surface
+
+    def generate_worker(self, size: int = 32) -> pygame.Surface:
+        """Génère le sprite de l'ouvrier (terrassier, vêtements simples)."""
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        
+        skin = (210, 180, 140)
+        cloth = (120, 90, 60)        # Veste marron
+        cloth_dark = (90, 65, 40)
+        pick = (150, 150, 160)       # Pioche acier
+        handle = (100, 70, 35)       # Manche en bois
+        
+        cx, cy = size // 2, size // 2
+        
+        # Tête
+        pygame.draw.rect(surface, skin, (cx - 6, cy - 12, 12, 10))
+        # Chaume / bonnet
+        pygame.draw.rect(surface, cloth_dark, (cx - 7, cy - 14, 14, 5))
+        
+        # Yeux
+        pygame.draw.rect(surface, (50, 50, 50), (cx - 4, cy - 8, 2, 2))
+        pygame.draw.rect(surface, (50, 50, 50), (cx + 2, cy - 8, 2, 2))
+        
+        # Corps
+        pygame.draw.rect(surface, cloth, (cx - 8, cy - 2, 16, 13))
+        pygame.draw.rect(surface, cloth_dark, (cx - 8, cy - 2, 16, 3))
+        
+        # Ceinture à outils
+        pygame.draw.rect(surface, (70, 50, 30), (cx - 8, cy + 7, 16, 3))
+        
+        # Jambes
+        pygame.draw.rect(surface, (60, 50, 40), (cx - 6, cy + 10, 5, 8))
+        pygame.draw.rect(surface, (60, 50, 40), (cx + 1, cy + 10, 5, 8))
+        
+        # Bras
+        pygame.draw.rect(surface, cloth, (cx - 12, cy, 4, 10))
+        pygame.draw.rect(surface, cloth, (cx + 8, cy, 4, 10))
+        
+        # Pioche sur l'épaule
+        pygame.draw.rect(surface, handle, (cx + 8, cy - 14, 3, 14))
+        pygame.draw.arc(surface, pick, (cx + 3, cy - 16, 16, 8), 0, 3.14, 2)
+        
+        return surface
+
+    def generate_hero(self, size: int = 32) -> pygame.Surface:
+        """Génère le sprite du héros (armure dorée, cape)."""
+        surface = pygame.Surface((size, size), pygame.SRCALPHA)
+        
+        skin = (220, 190, 150)
+        armor = (212, 175, 55)       # Or
+        armor_dark = (170, 140, 40)
+        cape = (140, 30, 30)         # Cape rouge
+        sword = (220, 220, 235)
+        
+        cx, cy = size // 2, size // 2
+        
+        # Cape (arrière-plan)
+        pygame.draw.polygon(surface, cape, [(cx - 6, cy - 10), (cx - 14, cy + 6), (cx - 2, cy + 16)])
+        pygame.draw.polygon(surface, cape, [(cx + 6, cy - 10), (cx + 14, cy + 6), (cx + 2, cy + 16)])
+        
+        # Tête
+        pygame.draw.rect(surface, skin, (cx - 6, cy - 12, 12, 10))
+        # Casque doré
+        pygame.draw.rect(surface, armor, (cx - 7, cy - 14, 14, 6))
+        pygame.draw.rect(surface, armor_dark, (cx - 5, cy - 14, 10, 2))
+        
+        # Yeux
+        pygame.draw.rect(surface, (40, 40, 40), (cx - 4, cy - 8, 2, 2))
+        pygame.draw.rect(surface, (40, 40, 40), (cx + 2, cy - 8, 2, 2))
+        
+        # Corps en armure dorée
+        pygame.draw.rect(surface, armor, (cx - 8, cy - 2, 16, 14))
+        pygame.draw.rect(surface, armor_dark, (cx - 8, cy - 2, 16, 3))
+        
+        # Ceinture
+        pygame.draw.rect(surface, (120, 90, 30), (cx - 8, cy + 8, 16, 2))
+        
+        # Jambes
+        pygame.draw.rect(surface, armor_dark, (cx - 6, cy + 10, 5, 8))
+        pygame.draw.rect(surface, armor_dark, (cx + 1, cy + 10, 5, 8))
+        
+        # Bras
+        pygame.draw.rect(surface, armor, (cx - 12, cy, 4, 10))
+        pygame.draw.rect(surface, armor, (cx + 8, cy, 4, 10))
+        
+        # Épée
+        pygame.draw.rect(surface, sword, (cx + 10, cy - 4, 3, 16))
+        pygame.draw.rect(surface, (150, 120, 20), (cx + 9, cy + 10, 5, 3))
+        
+        return surface
     
     def generate_townhall(self, size: int = 64) -> pygame.Surface:
         """Génère le sprite de l'Hôtel de Ville."""
