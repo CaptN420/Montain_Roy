@@ -371,8 +371,11 @@ class EnemyAI:
                 # Rappeler vers la base
                 self.game.movement_system.move_to(unit, base[0], base[1])
                 retreated += 1
-        if retreated > 0:
-            self.audio_events.on_order_given("retreat")
+        if retreated > 0 and hasattr(self.game, 'audio_events'):
+            try:
+                self.game.audio_events.on_order_given("retreat")
+            except Exception:
+                pass
 
     def _player_raiding_resources(self):
         """True si des workers/builders joueur récoltent nos nodes de ressources.
